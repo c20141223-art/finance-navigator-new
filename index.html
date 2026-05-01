@@ -1,0 +1,2408 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>理財自動導航器 2.0</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap');
+
+:root {
+  --bg: #0a0e1a;
+  --bg2: #111827;
+  --bg3: #1a2235;
+  --card: #1e2d45;
+  --card2: #243350;
+  --border: #2a3f5f;
+  --teal: #00d4c8;
+  --teal2: #00a8a0;
+  --green: #10d98a;
+  --red: #ff5a6a;
+  --amber: #ffb347;
+  --purple: #a78bfa;
+  --blue: #60a5fa;
+  --text: #e2e8f0;
+  --text2: #94a3b8;
+  --text3: #64748b;
+  --radius: 14px;
+  --nav-h: 68px;
+  --top-h: 56px;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+html, body { height: 100%; overflow: hidden; }
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── TOP BAR ── */
+.topbar {
+  height: var(--top-h);
+  background: var(--bg2);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 10px;
+  flex-shrink: 0;
+  z-index: 50;
+}
+.topbar-logo {
+  font-family: 'Space Mono', monospace;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal);
+  letter-spacing: 0.05em;
+}
+.topbar-month {
+  margin-left: auto;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 13px;
+  color: var(--text2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.topbar-month select {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}
+.health-btn {
+  background: var(--card);
+  border: 1px solid var(--teal);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: var(--teal);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: background 0.2s;
+}
+.health-btn:hover { background: var(--card2); }
+
+/* ── MAIN SCROLL AREA ── */
+.main {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ── PAGES ── */
+.pages {
+  display: flex;
+  width: 500%;
+  height: 100%;
+  transition: transform 0.35s cubic-bezier(.4,0,.2,1);
+}
+.page {
+  width: 20%;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 14px 14px calc(var(--nav-h) + 20px);
+  scroll-behavior: smooth;
+}
+.page::-webkit-scrollbar { width: 3px; }
+.page::-webkit-scrollbar-track { background: transparent; }
+.page::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* ── CARDS ── */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.card-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text2);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── KPI GRID ── */
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.kpi-card {
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}
+.kpi-label { font-size: 10px; color: rgba(255,255,255,.65); margin-bottom: 4px; }
+.kpi-val { font-family: 'Space Mono', monospace; font-size: 15px; font-weight: 700; color: #fff; }
+.kpi-sub { font-size: 9px; color: rgba(255,255,255,.5); margin-top: 2px; }
+
+/* ── PROGRESS BAR ── */
+.prog-row { margin-bottom: 10px; }
+.prog-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text2); margin-bottom: 4px; }
+.prog-label span:last-child { font-family: 'Space Mono', monospace; font-size: 11px; }
+.prog-track {
+  background: var(--bg);
+  border-radius: 6px;
+  height: 8px;
+  overflow: hidden;
+}
+.prog-fill {
+  height: 100%;
+  border-radius: 6px;
+  transition: width 0.5s ease;
+}
+
+/* ── TABLE ROWS ── */
+.trow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+.trow:last-of-type { border-bottom: none; }
+.trow-label { font-size: 13px; color: var(--text); }
+.trow-amt {
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  color: var(--text2);
+  text-align: right;
+  min-width: 70px;
+}
+.trow-amt input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--teal);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  width: 90px;
+  text-align: right;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.trow-amt input:focus { border-color: var(--teal); }
+.trow-label input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font-family: 'Noto Sans TC', sans-serif;
+  font-size: 13px;
+  padding: 4px 8px;
+  width: 110px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.trow-label input:focus { border-color: var(--teal); }
+
+/* ── TOGGLE Y/N ── */
+.toggle-yn {
+  font-size: 11px;
+  font-weight: 700;
+  font-family: 'Space Mono', monospace;
+  padding: 3px 9px;
+  border-radius: 20px;
+  border: 1px solid;
+  cursor: pointer;
+  transition: all 0.18s;
+  user-select: none;
+  min-width: 36px;
+  text-align: center;
+}
+.toggle-yn.yes { background: rgba(0,212,200,.15); border-color: var(--teal); color: var(--teal); }
+.toggle-yn.no  { background: rgba(100,116,139,.1); border-color: var(--text3); color: var(--text3); }
+
+/* ── DELETE ROW ── */
+.del-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255,90,106,.12);
+  border: 1px solid rgba(255,90,106,.3);
+  color: var(--red);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.2s;
+}
+.del-btn:hover { background: rgba(255,90,106,.25); }
+
+/* ── ADD ITEM BTN ── */
+.add-item-btn {
+  width: 100%;
+  padding: 8px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text3);
+  font-size: 12px;
+  font-family: 'Noto Sans TC', sans-serif;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.add-item-btn:hover { border-color: var(--teal); color: var(--teal); background: rgba(0,212,200,.05); }
+
+/* ── SUMMARY ROW ── */
+.sum-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 10px;
+  margin-top: 10px;
+}
+.sum-label { font-size: 13px; font-weight: 700; }
+.sum-val { font-family: 'Space Mono', monospace; font-size: 14px; font-weight: 700; }
+
+/* ── LOAN CARDS ── */
+.loan-card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.loan-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.loan-name { font-size: 14px; font-weight: 700; }
+.loan-badge {
+  font-size: 10px;
+  font-family: 'Space Mono', monospace;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+.loan-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.loan-field { }
+.loan-field-label { font-size: 10px; color: var(--text3); margin-bottom: 3px; }
+.loan-field input {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--teal);
+  font-family: 'Space Mono', monospace;
+  font-size: 12px;
+  padding: 5px 7px;
+  width: 100%;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.loan-field input:focus { border-color: var(--teal); }
+.loan-footer { margin-top: 10px; }
+.loan-prog-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--text2); margin-bottom: 4px; }
+
+/* ── STRATEGY BOX ── */
+.strategy-box {
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+}
+.strategy-title { font-size: 12px; font-weight: 700; margin-bottom: 4px; }
+.strategy-desc { font-size: 11px; line-height: 1.6; color: var(--text2); }
+
+/* ── CHART CONTAINER ── */
+.chart-wrap {
+  position: relative;
+  height: 180px;
+  margin: 8px 0;
+}
+.chart-wrap canvas { max-height: 180px; }
+
+.chart-legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 10px;
+}
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text2);
+}
+.legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+/* ── COMPARISON TABLE ── */
+.cmp-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.cmp-table th {
+  padding: 6px 8px;
+  text-align: right;
+  color: var(--text3);
+  font-size: 11px;
+  font-weight: 500;
+  border-bottom: 1px solid var(--border);
+}
+.cmp-table th:first-child { text-align: left; }
+.cmp-table td {
+  padding: 8px 8px;
+  border-bottom: 1px solid rgba(42,63,95,.5);
+  font-family: 'Space Mono', monospace;
+  font-size: 11px;
+  text-align: right;
+  color: var(--text2);
+}
+.cmp-table td:first-child {
+  font-family: 'Noto Sans TC', sans-serif;
+  font-size: 12px;
+  color: var(--text);
+  text-align: left;
+}
+.delta-pos { color: var(--green); }
+.delta-neg { color: var(--red); }
+
+/* ── BOTTOM NAV ── */
+.bottom-nav {
+  height: var(--nav-h);
+  background: var(--bg2);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  z-index: 50;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  padding-top: 6px;
+}
+.nav-item::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 25%;
+  right: 25%;
+  height: 2px;
+  background: var(--teal);
+  border-radius: 0 0 3px 3px;
+  transform: scaleX(0);
+  transition: transform 0.25s;
+}
+.nav-item.active::before { transform: scaleX(1); }
+.nav-icon { font-size: 20px; transition: transform 0.2s; }
+.nav-item.active .nav-icon { transform: translateY(-2px); }
+.nav-label {
+  font-size: 10px;
+  color: var(--text3);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+.nav-item.active .nav-label { color: var(--teal); }
+
+/* ── HEALTH PANEL (draggable) ── */
+#health-panel {
+  position: fixed;
+  background: var(--bg2);
+  border: 1px solid var(--teal);
+  border-radius: 16px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.6), 0 0 0 1px rgba(0,212,200,.15);
+  z-index: 200;
+  width: min(340px, 92vw);
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  bottom: calc(var(--nav-h) + 16px);
+  right: 14px;
+  transform-origin: bottom right;
+  transition: opacity 0.2s, transform 0.25s;
+}
+#health-panel.hidden { display: none; }
+#health-panel.minimized { max-height: 46px; }
+
+.panel-drag {
+  padding: 10px 14px;
+  background: linear-gradient(135deg, rgba(0,212,200,.1), rgba(0,168,160,.05));
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+.panel-drag:active { cursor: grabbing; }
+.panel-drag-title { font-size: 13px; font-weight: 700; color: var(--teal); flex: 1; }
+.panel-ctrl {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  background: rgba(255,255,255,.07);
+  border: none;
+  color: var(--text2);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+.panel-ctrl:hover { background: rgba(255,255,255,.15); }
+
+.panel-body {
+  overflow-y: auto;
+  padding: 12px 14px;
+  flex: 1;
+}
+.panel-body::-webkit-scrollbar { width: 3px; }
+.panel-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.diag-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(42,63,95,.5);
+}
+.diag-item:last-child { border-bottom: none; }
+.diag-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.diag-text { font-size: 12px; line-height: 1.5; color: var(--text2); }
+.diag-score {
+  text-align: center;
+  margin-bottom: 12px;
+}
+.diag-score-val {
+  font-family: 'Space Mono', monospace;
+  font-size: 42px;
+  font-weight: 700;
+  color: var(--teal);
+  line-height: 1;
+}
+.diag-score-label { font-size: 11px; color: var(--text3); margin-top: 2px; }
+
+/* ── SECTION HEADER ── */
+.sec-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.sec-emoji { font-size: 18px; }
+.sec-title { font-size: 15px; font-weight: 700; }
+
+/* ── REPORT TABS ── */
+.report-tabs {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 14px;
+  background: var(--bg);
+  padding: 4px;
+  border-radius: 10px;
+}
+.rtab {
+  flex: 1;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  color: var(--text3);
+  border: none;
+  background: none;
+  font-family: 'Noto Sans TC', sans-serif;
+}
+.rtab.active { background: var(--card); color: var(--teal); }
+
+/* ── CHIP ── */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* ── ANIMATIONS ── */
+@keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.fade-in { animation: fadeIn 0.25s ease forwards; }
+
+/* ── OVERVIEW SUMMARY ── */
+.overview-remain {
+  text-align: center;
+  padding: 16px 0 8px;
+}
+.overview-remain-label { font-size: 11px; color: var(--text3); margin-bottom: 4px; }
+.overview-remain-val {
+  font-family: 'Space Mono', monospace;
+  font-size: 32px;
+  font-weight: 700;
+}
+
+/* ── LIFESTYLE MODE ── */
+.mode-btn {
+  border-radius: 12px;
+  border: 1.5px solid var(--border);
+  padding: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: var(--bg);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.mode-btn.selected {
+  border-color: var(--teal);
+  background: rgba(0,212,200,.07);
+}
+.mode-btn:active { transform: scale(0.97); }
+.mode-emoji { font-size: 20px; margin-bottom: 4px; }
+.mode-name { font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+.mode-ratio { font-size: 10px; font-family: 'Space Mono', monospace; color: var(--text3); }
+.mode-check {
+  position: absolute;
+  top: 5px; right: 5px;
+  width: 16px; height: 16px;
+  background: var(--teal);
+  border-radius: 50%;
+  font-size: 9px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--bg);
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.mode-btn.selected .mode-check { opacity: 1; }
+.match-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(42,63,95,.4);
+  font-size: 12px;
+}
+.match-row:last-child { border-bottom: none; }
+.match-label { color: var(--text2); }
+.match-vals { display: flex; align-items: center; gap: 8px; font-family: 'Space Mono'; font-size: 11px; }
+.match-actual { }
+.match-target { color: var(--text3); }
+.match-icon { font-size: 13px; }
+
+/* ── SAVINGS ALLOCATION TABLE ── */
+.alloc-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 1fr;
+  gap: 8px;
+  align-items: start;
+  padding: 12px 0;
+  border-bottom: 1px solid rgba(42,63,95,.5);
+}
+.alloc-row:last-of-type { border-bottom: none; }
+.alloc-item-main { }
+.alloc-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  font-size: 10px;
+  font-weight: 700;
+  margin-bottom: 5px;
+}
+.alloc-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+.alloc-name input {
+  background: none;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: 'Noto Sans TC', sans-serif;
+  width: 100%;
+  outline: none;
+  padding: 1px 0;
+}
+.alloc-sub {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.4;
+  margin-top: 2px;
+}
+.alloc-sub input {
+  background: none;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  color: var(--text3);
+  font-size: 11px;
+  font-family: 'Noto Sans TC', sans-serif;
+  width: 100%;
+  outline: none;
+  padding: 1px 0;
+}
+.alloc-amt-col {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.alloc-amt-input {
+  background: rgba(0,212,200,.06);
+  border: 1.5px solid rgba(0,212,200,.25);
+  border-radius: 10px;
+  color: var(--teal);
+  font-family: 'Space Mono', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+  width: 100%;
+  padding: 8px 4px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+.alloc-amt-input:focus { border-color: var(--teal); }
+.alloc-note {
+  font-size: 11px;
+  color: var(--text3);
+  line-height: 1.6;
+  padding-top: 2px;
+}
+.alloc-note input {
+  background: none;
+  border: none;
+  border-bottom: 1px dashed var(--border);
+  color: var(--text3);
+  font-size: 11px;
+  font-family: 'Noto Sans TC', sans-serif;
+  width: 100%;
+  outline: none;
+  padding: 1px 0;
+}
+
+/* ── BUDGET TRAFFIC LIGHT ── */
+.budget-light {
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all 0.3s;
+}
+.budget-light-label {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .02em;
+  white-space: nowrap;
+  transition: color 0.3s;
+}
+.budget-light-wrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 3px 10px 3px 6px;
+}
+
+.alloc-budget-hint {
+  font-size: 10px;
+  margin-top: 4px;
+  text-align: center;
+  line-height: 1.4;
+}
+
+/* ── RESPONSIVE ── */
+@media (min-width: 480px) {
+  .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+  .page { padding: 18px 18px calc(var(--nav-h) + 20px); }
+}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <span class="topbar-logo">💰 NAVIGATOR</span>
+  <div class="topbar-month">
+    <span>📅</span>
+    <select id="month-sel" onchange="onMonthChange()"></select>
+  </div>
+  <button class="health-btn" onclick="toggleHealthPanel()">🩺 健診</button>
+  <button class="health-btn" style="border-color:var(--red);color:var(--red);" onclick="confirmReset()" title="清除所有資料重新開始">🗑️</button>
+  <span id="save-badge" style="font-size:10px;color:var(--green);opacity:0;transition:opacity 0.4s;white-space:nowrap;">✓ 已存檔</span>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+<div class="pages" id="pages">
+
+<!-- ── PAGE 0: 總覽 ── -->
+<div class="page" id="page-0">
+
+  <!-- remain -->
+  <div class="card" style="background:linear-gradient(135deg,#0d2a3e,#132840);border-color:rgba(0,212,200,.3)">
+    <div class="overview-remain">
+      <div class="overview-remain-label">本月可分配剩餘</div>
+      <div class="overview-remain-val" id="ov-remain" style="color:var(--green)">$0</div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card" style="background:rgba(0,212,200,.12)">
+        <div class="kpi-label">月收入</div>
+        <div class="kpi-val" id="ov-income">$0</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,90,106,.12)">
+        <div class="kpi-label">固定支出</div>
+        <div class="kpi-val" id="ov-fixed">$0</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(255,179,71,.12)">
+        <div class="kpi-label">變動支出</div>
+        <div class="kpi-val" id="ov-var">$0</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(16,217,138,.12)">
+        <div class="kpi-label">實際儲蓄</div>
+        <div class="kpi-val" id="ov-save">$0</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(167,139,250,.12)">
+        <div class="kpi-label">貸款月付</div>
+        <div class="kpi-val" id="ov-loan">$0</div>
+      </div>
+      <div class="kpi-card" style="background:rgba(96,165,250,.12)">
+        <div class="kpi-label">儲蓄率</div>
+        <div class="kpi-val" id="ov-saverate">0%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- budget bars -->
+  <div class="card">
+    <div class="card-title">📊 預算使用率</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:10px;" id="mode-hint-bar">目前模式：—</div>
+    <div class="prog-row">
+      <div class="prog-label"><span>固定支出</span><span id="pct-fixed">0%</span></div>
+      <div class="prog-track"><div class="prog-fill" id="bar-fixed" style="width:0%;background:var(--red)"></div></div>
+    </div>
+    <div class="prog-row">
+      <div class="prog-label"><span>變動支出</span><span id="pct-var">0%</span></div>
+      <div class="prog-track"><div class="prog-fill" id="bar-var" style="width:0%;background:var(--amber)"></div></div>
+    </div>
+    <div class="prog-row">
+      <div class="prog-label"><span>儲蓄進度</span><span id="pct-save">0%</span></div>
+      <div class="prog-track"><div class="prog-fill" id="bar-save" style="width:0%;background:var(--green)"></div></div>
+    </div>
+  </div>
+
+  <!-- lifestyle mode -->
+  <div class="card" id="mode-card">
+    <div class="card-title">🎭 選擇你的生活模式</div>
+    <div id="mode-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;"></div>
+
+    <!-- custom inputs (only shown when 自訂 is selected) -->
+    <div id="custom-mode-inputs" style="display:none;margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:700;letter-spacing:.08em;">自訂比例（總和應為 100%）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;">
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">固定支出 %</div>
+          <input type="number" id="custom-fixed" value="50" min="0" max="100" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--red);font-family:'Space Mono';font-size:13px;padding:5px 8px;width:100%;outline:none;" oninput="onCustomChange()">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">變動支出 %</div>
+          <input type="number" id="custom-var" value="30" min="0" max="100" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--amber);font-family:'Space Mono';font-size:13px;padding:5px 8px;width:100%;outline:none;" oninput="onCustomChange()">
+        </div>
+        <div>
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">儲蓄 %</div>
+          <input type="number" id="custom-save" value="20" min="0" max="100" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--green);font-family:'Space Mono';font-size:13px;padding:5px 8px;width:100%;outline:none;" oninput="onCustomChange()">
+        </div>
+      </div>
+      <div id="custom-sum-warn" style="font-size:11px;color:var(--red);margin-top:4px;display:none;">⚠️ 三項總和須等於 100%</div>
+    </div>
+
+    <!-- mode match result -->
+    <div id="mode-match" style="background:var(--bg);border-radius:10px;padding:12px;"></div>
+  </div>
+
+  <!-- loan summary -->
+  <div class="card">
+    <div class="card-title">🏦 貸款清償摘要</div>
+    <div id="ov-loans-list"></div>
+  </div>
+
+</div><!-- /page-0 -->
+
+<!-- ── PAGE 1: 收入 ── -->
+<div class="page" id="page-1">
+
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">💰</span>
+      <span class="sec-title">月收入設定</span>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;align-items:center;padding:4px 0 8px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.08em;">
+      <div>項目</div><div style="text-align:right">金額</div><div style="text-align:center">納入計算</div><div></div>
+    </div>
+
+    <div id="income-rows"></div>
+
+    <button class="add-item-btn" onclick="addRow('income')">
+      <span style="font-size:16px">＋</span> 新增收入項目
+    </button>
+
+    <div class="sum-row" style="background:rgba(0,212,200,.08);margin-top:12px;">
+      <span class="sum-label" style="color:var(--teal)">計入預算總收入</span>
+      <span class="sum-val" style="color:var(--teal)" id="income-total">$0</span>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:6px;padding:0 2px;">
+      🛡️ 保守模式（僅薪資）：<span id="conservative-income" style="font-family:'Space Mono';color:var(--amber)">$0</span>
+    </div>
+  </div>
+
+  <!-- 💎 本月儲蓄分配 -->
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">💎</span>
+      <span class="sec-title">本月儲蓄分配</span>
+      <div class="budget-light-wrap">
+        <span class="budget-light" id="light-save">⬜</span>
+        <span class="budget-light-label" id="light-save-label"></span>
+      </div>
+    </div>
+
+    <!-- 月儲蓄目標（自動由生活模式計算） -->
+    <div style="background:linear-gradient(135deg,rgba(16,217,138,.08),rgba(0,212,200,.05));border-radius:12px;padding:12px;margin-bottom:14px;border:1px solid rgba(16,217,138,.25);">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+        <div style="font-size:11px;color:var(--text3);font-weight:700;letter-spacing:.08em;">🎯 本月儲蓄目標</div>
+        <div style="font-size:10px;color:var(--text3)">由生活模式自動計算</div>
+      </div>
+      <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:6px;">
+        <span style="font-family:'Space Mono';font-size:28px;font-weight:700;color:var(--green)" id="auto-save-target">$0</span>
+        <span style="font-size:12px;color:var(--text3)">/ 月</span>
+      </div>
+      <div style="font-size:11px;color:var(--text3)" id="auto-save-breakdown">
+        — 請先在「總覽」選擇生活模式
+      </div>
+    </div>
+
+    <!-- 分配表標題列 -->
+    <div style="display:grid;grid-template-columns:1fr 100px 1fr;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.08em;">
+      <div>儲蓄項目</div><div style="text-align:center">本月金額（元）</div><div>說明 / 預算提示</div>
+    </div>
+
+    <!-- 分配項目 -->
+    <div id="savings-alloc-rows"></div>
+
+    <!-- 新增自訂項目 -->
+    <button class="add-item-btn" onclick="addSavingsAlloc()">
+      <span style="font-size:16px">＋</span> 新增自訂儲蓄項目
+    </button>
+
+    <!-- 分配總計 vs 目標 -->
+    <div id="alloc-summary" style="margin-top:12px;background:var(--bg);border-radius:10px;padding:10px 12px;border:1px solid var(--border);"></div>
+  </div>
+
+</div><!-- /page-1 -->
+
+<!-- ── PAGE 2: 支出 ── -->
+<div class="page" id="page-2">
+
+  <!-- Fixed -->
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">🔒</span>
+      <span class="sec-title">固定支出</span>
+      <div class="budget-light-wrap">
+        <span class="budget-light" id="light-fixed">⬜</span>
+        <span class="budget-light-label" id="light-fixed-label"></span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0 8px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.08em;">
+      <div>項目</div><div style="text-align:right">金額</div><div></div>
+    </div>
+    <div id="fixed-rows"></div>
+    <button class="add-item-btn" onclick="addRow('fixed')">
+      <span style="font-size:16px">＋</span> 新增固定支出
+    </button>
+    <div class="sum-row" style="background:rgba(255,90,106,.08)">
+      <span class="sum-label" style="color:var(--red)">固定支出合計</span>
+      <span class="sum-val" style="color:var(--red)" id="fixed-total">$0</span>
+    </div>
+  </div>
+
+  <!-- Variable -->
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">🔓</span>
+      <span class="sec-title">變動支出</span>
+      <div class="budget-light-wrap">
+        <span class="budget-light" id="light-var">⬜</span>
+        <span class="budget-light-label" id="light-var-label"></span>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:4px 0 8px;border-bottom:1px solid var(--border);font-size:10px;color:var(--text3);font-weight:700;letter-spacing:.08em;">
+      <div>項目</div><div style="text-align:right">金額</div><div></div>
+    </div>
+    <div id="var-rows"></div>
+    <button class="add-item-btn" onclick="addRow('variable')">
+      <span style="font-size:16px">＋</span> 新增變動支出
+    </button>
+    <div class="sum-row" style="background:rgba(255,179,71,.08)">
+      <span class="sum-label" style="color:var(--amber)">變動支出合計</span>
+      <span class="sum-val" style="color:var(--amber)" id="var-total">$0</span>
+    </div>
+  </div>
+
+</div><!-- /page-2 -->
+
+<!-- ── PAGE 3: 貸款 ── -->
+<div class="page" id="page-3">
+
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">🏦</span>
+      <span class="sec-title">貸款管理</span>
+    </div>
+    <div id="loan-cards"></div>
+    <button class="add-item-btn" onclick="addLoan()">
+      <span style="font-size:16px">＋</span> 新增貸款
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="card-title">🚀 加速還款策略</div>
+    <div style="margin-bottom:8px;">
+      <div style="font-size:12px;color:var(--text2);margin-bottom:6px;">每月可額外還款</div>
+      <div style="display:flex;align-items:center;gap:8px;">
+        <input type="number" id="extra-payment" value="5000" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--teal);font-family:'Space Mono';font-size:13px;padding:6px 10px;width:120px;outline:none;" oninput="calcStrategy()">
+        <span style="font-size:12px;color:var(--text3)">元/月</span>
+      </div>
+    </div>
+    <div id="strategy-boxes"></div>
+  </div>
+
+</div><!-- /page-3 -->
+
+<!-- ── PAGE 4: 報告 ── -->
+<div class="page" id="page-4">
+
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">📈</span>
+      <span class="sec-title">財務健診報告</span>
+    </div>
+
+    <div class="report-tabs" id="report-tabs">
+      <button class="rtab active" onclick="switchReport(0,this)">本月</button>
+      <button class="rtab" onclick="switchReport(1,this)">上月比較</button>
+      <button class="rtab" onclick="switchReport(2,this)">季度趨勢</button>
+    </div>
+
+    <!-- Report 0: 本月 -->
+    <div id="report-0">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div>
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:6px;">支出結構</div>
+          <div class="chart-wrap"><canvas id="pie-expense"></canvas></div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text3);text-align:center;margin-bottom:6px;">收支分配</div>
+          <div class="chart-wrap"><canvas id="pie-allocation"></canvas></div>
+        </div>
+      </div>
+      <div class="chart-legend" id="expense-legend"></div>
+
+      <div style="margin-top:14px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:700;letter-spacing:.08em;">50/30/20 法則符合度</div>
+        <div id="rule-check"></div>
+      </div>
+    </div>
+
+    <!-- Report 1: 上月比較 -->
+    <div id="report-1" style="display:none">
+      <div class="chart-wrap" style="height:200px;">
+        <canvas id="bar-compare"></canvas>
+      </div>
+      <div style="margin-top:12px;">
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th>項目</th>
+              <th>上月</th>
+              <th>本月</th>
+              <th>變化</th>
+            </tr>
+          </thead>
+          <tbody id="compare-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Report 2: 季度趨勢 -->
+    <div id="report-2" style="display:none">
+      <div class="chart-wrap" style="height:200px;">
+        <canvas id="line-trend"></canvas>
+      </div>
+      <div style="margin-top:12px;">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:8px;font-weight:700;letter-spacing:.08em;">季度摘要</div>
+        <div id="quarter-summary"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 儲蓄目標已移至「💰 收入」頁籤下方 -->
+
+  <!-- 長期目標追蹤 -->
+  <div class="card">
+    <div class="sec-header">
+      <span class="sec-emoji">🏆</span>
+      <span class="sec-title">長期儲蓄 / 投資目標追蹤</span>
+    </div>
+    <div id="saving-goals-rows"></div>
+    <button class="add-item-btn" onclick="addSavingGoal()">
+      <span style="font-size:16px">＋</span> 新增長期目標
+    </button>
+  </div>
+
+</div><!-- /page-4 -->
+
+</div><!-- /pages -->
+</div><!-- /main -->
+
+<!-- BOTTOM NAV -->
+<nav class="bottom-nav">
+  <div class="nav-item active" onclick="goPage(0)" id="nav-0">
+    <span class="nav-icon">🏠</span>
+    <span class="nav-label">總覽</span>
+  </div>
+  <div class="nav-item" onclick="goPage(1)" id="nav-1">
+    <span class="nav-icon">💰</span>
+    <span class="nav-label">收入</span>
+  </div>
+  <div class="nav-item" onclick="goPage(2)" id="nav-2">
+    <span class="nav-icon">💸</span>
+    <span class="nav-label">支出</span>
+  </div>
+  <div class="nav-item" onclick="goPage(3)" id="nav-3">
+    <span class="nav-icon">🏦</span>
+    <span class="nav-label">貸款</span>
+  </div>
+  <div class="nav-item" onclick="goPage(4)" id="nav-4">
+    <span class="nav-icon">📈</span>
+    <span class="nav-label">報告</span>
+  </div>
+</nav>
+
+<!-- HEALTH PANEL -->
+<div id="health-panel" class="hidden">
+  <div class="panel-drag" id="panel-drag">
+    <span>🩺</span>
+    <span class="panel-drag-title">財務健診</span>
+    <button class="panel-ctrl" id="panel-min-btn" onclick="minimizePanel()" title="縮小">−</button>
+    <button class="panel-ctrl" onclick="toggleHealthPanel()" title="關閉">✕</button>
+  </div>
+  <div class="panel-body" id="panel-body">
+    <div class="diag-score">
+      <div class="diag-score-val" id="health-score">—</div>
+      <div class="diag-score-label">財務健康分數 / 100</div>
+    </div>
+    <div id="health-items"></div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════
+let currentPage = 0;
+let panelMinimized = false;
+let chartExpense, chartAllocation, chartCompare, chartTrend;
+
+// ═══════════════════════════════════════
+// DEFAULT STATE（空白，不含個人資料）
+// ═══════════════════════════════════════
+const DEFAULT_STATE = {
+  saveTarget: 0,   // 月儲蓄目標（使用者自訂）
+  income: [
+    { name:'薪資', amt:0, include:true,  note:'' },
+    { name:'副業', amt:0, include:true,  note:'' },
+    { name:'投資報酬', amt:0, include:true,  note:'' },
+    { name:'獎金／不定期', amt:0, include:false, note:'建議保守不計入' },
+  ],
+  fixed: [
+    { name:'房租／房貸', amt:0 },
+    { name:'車貸', amt:0 },
+    { name:'保險', amt:0 },
+  ],
+  variable: [
+    { name:'餐飲', amt:0 },
+    { name:'交通', amt:0 },
+    { name:'日常雜支', amt:0 },
+    { name:'娛樂', amt:0 },
+  ],
+  loans: [],
+  savingGoals: [
+    { name:'緊急備用金（目標：3-6個月生活費）', target:0, current:0 },
+  ],
+  prevMonth: { income:0, fixed:0, variable:0, saving:0 },
+  selectedMode: 'balanced',
+  savingsAlloc: [
+    { badge:'① 最優先', badgeColor:'#ff5a6a', badgeBg:'rgba(255,90,106,.15)',
+      name:'緊急預備金', sub:'目標：3~6個月生活費，存入獨立帳戶',
+      amt:0, note:'絕不動用於日常消費或投資，只供真正緊急時使用', fixed:true },
+    { badge:'② 次優先', badgeColor:'#ffb347', badgeBg:'rgba(255,179,71,.15)',
+      name:'高利率負債加速還款', sub:'信用卡循環年息約15%',
+      amt:0, note:'還清高利率負債 = 無風險高報酬，比任何投資都划算', fixed:true },
+    { badge:'③ 第三步', badgeColor:'#10d98a', badgeBg:'rgba(16,217,138,.15)',
+      name:'定期定額投資（ETF）', sub:'完成前兩步後再開始',
+      amt:0, note:'每月固定買進，利用時間複利，不擇時、不停損', fixed:true },
+    { badge:'', badgeColor:'', badgeBg:'',
+      name:'旅遊 / 進修基金', sub:'中期目標，獨立帳戶管理',
+      amt:0, note:'為特定目標存款，與日常帳戶分開', fixed:false },
+    { badge:'', badgeColor:'', badgeBg:'',
+      name:'其他儲蓄目標', sub:'自訂項目',
+      amt:0, note:'', fixed:false },
+  ],
+};
+
+// ═══════════════════════════════════════
+// LOCALSTORAGE — 每月獨立儲存
+// ═══════════════════════════════════════
+const KEY_PREFIX = 'fnav_'; // finance_navigator
+
+function getCurrentMonth() {
+  const sel = document.getElementById('month-sel');
+  return sel ? sel.value : activeMonth;
+}
+
+function monthKey(month) {
+  return KEY_PREFIX + (month || getCurrentMonth());
+}
+
+function saveState() {
+  const month = activeMonth || getCurrentMonth();
+  if(!month) return;
+  try {
+    const payload = { ...state, selectedMode, savedAt: new Date().toISOString() };
+    localStorage.setItem(KEY_PREFIX + month, JSON.stringify(payload));
+    showSaveBadge();
+  } catch(e) { console.warn('localStorage 寫入失敗', e); }
+}
+
+function loadState(month) {
+  try {
+    const raw = localStorage.getItem(monthKey(month));
+    if(!raw) return false;
+    const saved = JSON.parse(raw);
+    ['income','fixed','variable','loans','savingGoals','prevMonth','savingsAlloc'].forEach(k => {
+      if(saved[k] !== undefined) state[k] = saved[k];
+    });
+    if(saved.saveTarget !== undefined) state.saveTarget = saved.saveTarget;
+    if(saved.selectedMode) selectedMode = saved.selectedMode;
+    return true;
+  } catch(e) { console.warn('localStorage 讀取失敗', e); return false; }
+}
+
+// 檢查某月是否已有存檔
+function monthHasData(month) {
+  return !!localStorage.getItem(monthKey(month));
+}
+
+// 重置 state 為空白預設
+function resetStateToDefault() {
+  const fresh = JSON.parse(JSON.stringify(DEFAULT_STATE));
+  ['income','fixed','variable','loans','savingGoals','prevMonth','savingsAlloc'].forEach(k => {
+    state[k] = fresh[k];
+  });
+  state.saveTarget = 0;
+  selectedMode = 'balanced';
+}
+
+let saveBadgeTimer;
+function showSaveBadge() {
+  let badge = document.getElementById('save-badge');
+  if(!badge) return;
+  badge.style.opacity = '1';
+  clearTimeout(saveBadgeTimer);
+  saveBadgeTimer = setTimeout(()=>{ badge.style.opacity='0'; }, 1800);
+}
+
+// ═══════════════════════════════════════
+// STATE（啟動時從 localStorage 載入，否則用空白預設）
+// ═══════════════════════════════════════
+const state = JSON.parse(JSON.stringify(DEFAULT_STATE)); // deep clone
+let computedSaveTarget = 0;
+let activeMonth = null; // 目前正在編輯的月份，用來在切換前正確存檔
+
+// ═══════════════════════════════════════
+// DYNAMIC MONTH SELECTOR
+// ═══════════════════════════════════════
+function buildMonthSelector(keepValue) {
+  const sel = document.getElementById('month-sel');
+  const now = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth() - 12, 1);
+  const end   = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+  const cur   = keepValue || `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  sel.innerHTML = '';
+  for(let d = new Date(start); d <= end; d.setMonth(d.getMonth()+1)) {
+    const val     = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const hasData = monthHasData(val);
+    const label   = `${hasData ? '● ' : ''}${d.getFullYear()}年${d.getMonth()+1}月`;
+    const opt = document.createElement('option');
+    opt.value = val;
+    opt.textContent = label;
+    if(val === cur) opt.selected = true;
+    sel.appendChild(opt);
+  }
+}
+
+// 切換月份：① 先存舊月 → ② 重置 → ③ 載入新月
+function onMonthChange() {
+  const newMonth = document.getElementById('month-sel').value;
+  if(newMonth === activeMonth) return; // 沒有真正切換
+
+  // ① 先把「舊月份」資料存起來
+  if(activeMonth) {
+    try {
+      const payload = { ...state, selectedMode, savedAt: new Date().toISOString() };
+      localStorage.setItem(KEY_PREFIX + activeMonth, JSON.stringify(payload));
+    } catch(e) { console.warn('存舊月失敗', e); }
+  }
+
+  // ② 重置為空白
+  resetStateToDefault();
+
+  // ③ 嘗試載入新月份資料
+  activeMonth = newMonth;
+  const restored = loadState(newMonth);
+
+  // 重新渲染
+  renderModeGrid();
+  renderIncome();
+  renderExpenses();
+  renderLoans();
+  renderSavingsAlloc();
+  renderSavingGoals();
+  recalc();
+
+  // 通知
+  const badge = document.getElementById('save-badge');
+  if(badge) {
+    badge.textContent = restored ? `✓ 已載入 ${newMonth}` : `✦ ${newMonth} 全新月份`;
+    badge.style.color  = restored ? 'var(--green)' : 'var(--teal)';
+    badge.style.opacity = '1';
+    clearTimeout(saveBadgeTimer);
+    saveBadgeTimer = setTimeout(()=>{ badge.style.opacity='0'; badge.style.color='var(--green)'; }, 2500);
+  }
+
+  // 重建選單更新「●」標記，並保持選中
+  buildMonthSelector(newMonth);
+}
+
+// ═══════════════════════════════════════
+// LIFESTYLE MODES
+// ═══════════════════════════════════════
+const MODES = [
+  { id:'minimalist', emoji:'🧘', name:'極簡節約', desc:'存錢第一', fixed:50, variable:20, save:30 },
+  { id:'balanced',   emoji:'⚖️', name:'平衡生活', desc:'50/30/20',  fixed:50, variable:30, save:20 },
+  { id:'quality',    emoji:'✨', name:'品質享受', desc:'重視體驗', fixed:40, variable:40, save:20 },
+  { id:'custom',     emoji:'🛠️', name:'自訂模式', desc:'自行設定', fixed:null, variable:null, save:null },
+];
+let selectedMode = 'balanced';
+
+function getActiveMode() {
+  if(selectedMode === 'custom') {
+    return {
+      fixed:    +document.getElementById('custom-fixed').value  || 50,
+      variable: +document.getElementById('custom-var').value    || 30,
+      save:     +document.getElementById('custom-save').value   || 20,
+    };
+  }
+  return MODES.find(m => m.id === selectedMode);
+}
+
+function renderModeGrid() {
+  const grid = document.getElementById('mode-grid');
+  grid.innerHTML = MODES.map(m => `
+    <div class="mode-btn ${selectedMode===m.id?'selected':''}" onclick="selectMode('${m.id}')">
+      <div class="mode-check">✓</div>
+      <div class="mode-emoji">${m.emoji}</div>
+      <div class="mode-name">${m.name}</div>
+      <div class="mode-ratio">${m.fixed!=null ? m.fixed+'/'+m.variable+'/'+m.save : '自行設定'}</div>
+    </div>
+  `).join('');
+}
+
+function selectMode(id) {
+  selectedMode = id;
+  renderModeGrid();
+  const customInputs = document.getElementById('custom-mode-inputs');
+  customInputs.style.display = id==='custom' ? '' : 'none';
+  recalc();
+  saveState();
+}
+
+function onCustomChange() {
+  const f = +document.getElementById('custom-fixed').value || 0;
+  const v = +document.getElementById('custom-var').value   || 0;
+  const s = +document.getElementById('custom-save').value  || 0;
+  document.getElementById('custom-sum-warn').style.display = (f+v+s!==100) ? '' : 'none';
+  recalc();
+}
+
+function renderModeMatch(income, fixed, variable, save) {
+  const mode = getActiveMode();
+  const container = document.getElementById('mode-match');
+  const modeName = MODES.find(m=>m.id===selectedMode)?.name || '自訂';
+
+  if(income===0) { container.innerHTML = '<div style="font-size:12px;color:var(--text3);text-align:center;padding:8px;">輸入收入後查看模式分析</div>'; return; }
+
+  const actual = { fixed: fixed/income*100, variable: variable/income*100, save: save/income*100 };
+  const targets = { fixed: mode.fixed, variable: mode.variable, save: mode.save };
+
+  const rows = [
+    { label:'固定支出', actual: actual.fixed, target: targets.fixed, pass: actual.fixed <= targets.fixed+5 },
+    { label:'變動支出', actual: actual.variable, target: targets.variable, pass: actual.variable <= targets.variable+5 },
+    { label:'儲蓄',     actual: actual.save,   target: targets.save,   pass: actual.save >= targets.save-5 },
+  ];
+  const allPass = rows.every(r=>r.pass);
+
+  container.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+      <span style="font-size:12px;font-weight:700;color:var(--text2)">📐 ${modeName} 符合度</span>
+      <span style="font-size:12px;font-weight:700;color:${allPass?'var(--green)':'var(--amber)'}">${allPass?'✅ 符合模式':'⚠️ 部分偏離'}</span>
+    </div>
+    ${rows.map(r=>`
+    <div class="match-row">
+      <span class="match-label">${r.label}</span>
+      <div class="match-vals">
+        <span class="match-actual" style="color:${r.pass?'var(--green)':'var(--red)'}">${r.actual.toFixed(1)}%</span>
+        <span class="match-target">/ 目標 ${r.target}%</span>
+        <span class="match-icon">${r.pass?'✅':'⚠️'}</span>
+      </div>
+    </div>`).join('')}
+    ${!allPass ? `<div style="margin-top:8px;font-size:11px;color:var(--amber);line-height:1.5;">
+      💡 建議：${rows.filter(r=>!r.pass).map(r=>{
+        if(r.label==='固定支出') return '固定支出偏高，考慮降低貸款或保險費用';
+        if(r.label==='變動支出') return '變動支出超標，留意餐飲與娛樂花費';
+        return '儲蓄未達目標，可調整變動支出';
+      }).join('；')}
+    </div>` : '<div style="margin-top:8px;font-size:11px;color:var(--green);">🎉 恭喜！本月財務狀況符合你的生活模式目標。</div>'}
+  `;
+
+  // Update mode hint bar
+  const hint = document.getElementById('mode-hint-bar');
+  if(hint) hint.innerHTML = `目前模式：<span style="color:var(--teal);font-weight:700">${modeName}</span>　目標比例：<span style="font-family:'Space Mono';font-size:10px;color:var(--text2)">${targets.fixed}% / ${targets.variable}% / ${targets.save}%</span>`;
+}
+
+// ═══════════════════════════════════════
+// NAVIGATION
+// ═══════════════════════════════════════
+function goPage(n) {
+  currentPage = n;
+  document.getElementById('pages').style.transform = `translateX(-${n*20}%)`;
+  document.querySelectorAll('.nav-item').forEach((el,i)=>{
+    el.classList.toggle('active', i===n);
+  });
+  if(n===4) setTimeout(renderReports, 100);
+}
+
+// ═══════════════════════════════════════
+// RENDER INCOME ROWS
+// ═══════════════════════════════════════
+function renderIncome() {
+  const container = document.getElementById('income-rows');
+  container.innerHTML = '';
+  state.income.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = 'trow fade-in';
+    row.style.gridTemplateColumns = '1fr auto auto auto';
+    row.innerHTML = `
+      <div class="trow-label">
+        <input value="${item.name}" onchange="state.income[${idx}].name=this.value;recalc();saveState()" placeholder="項目名稱">
+      </div>
+      <div class="trow-amt">
+        <input type="number" value="${item.amt}" onchange="state.income[${idx}].amt=+this.value;recalc();saveState()">
+      </div>
+      <div>
+        <span class="toggle-yn ${item.include?'yes':'no'}" onclick="toggleInclude(${idx})">${item.include?'Y':'N'}</span>
+      </div>
+      <button class="del-btn" onclick="delRow('income',${idx})">×</button>
+    `;
+    container.appendChild(row);
+  });
+  recalc();
+}
+
+function toggleInclude(idx) {
+  state.income[idx].include = !state.income[idx].include;
+  renderIncome();
+  saveState();
+}
+
+// ═══════════════════════════════════════
+// RENDER EXPENSE ROWS
+// ═══════════════════════════════════════
+function renderExpenses() {
+  ['fixed','variable'].forEach(type => {
+    const key = type==='fixed' ? 'fixed' : 'variable';
+    const container = document.getElementById(`${type==='fixed'?'fixed':'var'}-rows`);
+    container.innerHTML = '';
+    state[key].forEach((item, idx) => {
+      const row = document.createElement('div');
+      row.className = 'trow fade-in';
+      row.style.gridTemplateColumns = '1fr auto auto';
+      row.innerHTML = `
+        <div class="trow-label">
+          <input value="${item.name}" onchange="state['${key}'][${idx}].name=this.value;recalc();saveState()" placeholder="項目名稱">
+        </div>
+        <div class="trow-amt">
+          <input type="number" value="${item.amt}" onchange="state['${key}'][${idx}].amt=+this.value;recalc();saveState()">
+        </div>
+        <button class="del-btn" onclick="delRow('${key}',${idx})">×</button>
+      `;
+      container.appendChild(row);
+    });
+  });
+  recalc();
+}
+
+// ═══════════════════════════════════════
+// RENDER LOAN CARDS
+// ═══════════════════════════════════════
+function renderLoans() {
+  const container = document.getElementById('loan-cards');
+  container.innerHTML = '';
+  state.loans.forEach((loan, idx) => {
+    const pct = Math.round((1 - loan.remain/loan.orig)*100);
+    const colors = ['var(--teal)','var(--red)','var(--purple)'];
+    const color = colors[idx%3];
+    const months = loan.monthly > loan.remain*(loan.rate/1200)
+      ? Math.ceil(loan.remain/(loan.monthly - loan.remain*(loan.rate/1200)))
+      : 999;
+    const card = document.createElement('div');
+    card.className = 'loan-card fade-in';
+    card.innerHTML = `
+      <div class="loan-header">
+        <input value="${loan.name}" style="background:none;border:none;color:var(--text);font-size:14px;font-weight:700;font-family:'Noto Sans TC';width:120px;outline:none;" onchange="state.loans[${idx}].name=this.value;saveState()">
+        <div style="display:flex;gap:6px;align-items:center">
+          <span class="loan-badge" style="background:rgba(0,212,200,.1);color:${color};border:1px solid ${color}">利率 ${loan.rate}%</span>
+          <button class="del-btn" onclick="delLoan(${idx})">×</button>
+        </div>
+      </div>
+      <div class="loan-grid">
+        <div class="loan-field">
+          <div class="loan-field-label">原始金額</div>
+          <input type="number" value="${loan.orig}" onchange="state.loans[${idx}].orig=+this.value;renderLoans();recalc();saveState()">
+        </div>
+        <div class="loan-field">
+          <div class="loan-field-label">剩餘金額</div>
+          <input type="number" value="${loan.remain}" onchange="state.loans[${idx}].remain=+this.value;renderLoans();recalc();saveState()">
+        </div>
+        <div class="loan-field">
+          <div class="loan-field-label">月付款</div>
+          <input type="number" value="${loan.monthly}" onchange="state.loans[${idx}].monthly=+this.value;renderLoans();recalc();saveState()">
+        </div>
+        <div class="loan-field">
+          <div class="loan-field-label">年利率 %</div>
+          <input type="number" step="0.01" value="${loan.rate}" onchange="state.loans[${idx}].rate=+this.value;renderLoans();recalc();saveState()">
+        </div>
+        <div class="loan-field">
+          <div class="loan-field-label">預計月數</div>
+          <input readonly value="${months>500?'∞':months+'個月'}" style="color:var(--text2);">
+        </div>
+        <div class="loan-field">
+          <div class="loan-field-label">清償率</div>
+          <input readonly value="${pct}%" style="color:${color}">
+        </div>
+      </div>
+      <div class="loan-footer">
+        <div class="loan-prog-label">
+          <span>清償進度</span><span style="color:${color}">${pct}%</span>
+        </div>
+        <div class="prog-track">
+          <div class="prog-fill" style="width:${pct}%;background:${color}"></div>
+        </div>
+      </div>
+    `;
+    container.appendChild(card);
+  });
+  calcStrategy();
+  recalc();
+}
+
+function delLoan(idx) {
+  state.loans.splice(idx,1);
+  renderLoans();
+  saveState();
+}
+
+function addLoan() {
+  state.loans.push({ name:'新貸款', orig:100000, remain:100000, monthly:3000, rate:3.0 });
+  renderLoans();
+  saveState();
+}
+
+// ═══════════════════════════════════════
+// BUDGET TRAFFIC LIGHTS
+// ═══════════════════════════════════════
+function dot(color) {
+  return `<svg width="11" height="11" viewBox="0 0 11 11"><circle cx="5.5" cy="5.5" r="5.5" fill="${color}"/></svg>`;
+}
+
+function setBudgetLight(lightId, labelId, actual, budget, type) {
+  const lightEl = document.getElementById(lightId);
+  const labelEl = document.getElementById(labelId);
+  if(!lightEl || !labelEl) return;
+
+  if(budget === 0) {
+    lightEl.innerHTML = dot('#4a5568');
+    labelEl.innerHTML = '';
+    labelEl.style.color = 'var(--text3)';
+    return;
+  }
+
+  const pct = actual / budget * 100;
+  let dotColor, label, color;
+
+  if(type === 'expense') {
+    const budgetStr = `上限 $${fmt(budget)}`;
+    if(pct <= 90)       { dotColor='#10d98a'; label=budgetStr; color='var(--green)'; }
+    else if(pct <= 100) { dotColor='#ffb347'; label=`${budgetStr}・接近上限`; color='var(--amber)'; }
+    else if(pct <= 115) { dotColor='#ff8c42'; label=`${budgetStr}・超 $${fmt(Math.round(actual-budget))}`; color='#ff8c42'; }
+    else                { dotColor='#ff5a6a'; label=`${budgetStr}・超 $${fmt(Math.round(actual-budget))}`; color='var(--red)'; }
+  } else {
+    const diff = actual - budget;
+    if(actual < budget)   { dotColor='#ff5a6a'; label=`差 $${fmt(Math.round(budget-actual))}`; color='var(--red)'; }
+    else if(diff <= 1000) { dotColor='#10d98a'; label='達標'; color='var(--green)'; }
+    else if(diff <= 3000) { dotColor='#60a5fa'; label='優於目標'; color='var(--blue)'; }
+    else                  { dotColor='#a78bfa'; label='極優目標'; color='var(--purple)'; }
+  }
+
+  lightEl.innerHTML = dot(dotColor);
+  labelEl.innerHTML = label;
+  labelEl.style.color = color;
+}
+
+function updateBudgetLights(income, fixed, variable, saveActual) {
+  const mode = getActiveMode();
+  if(!mode || income === 0) {
+    ['light-fixed','light-var','light-save'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) el.textContent = '⬜';
+    });
+    ['light-fixed-label','light-var-label','light-save-label'].forEach(id => {
+      const el = document.getElementById(id);
+      if(el) { el.textContent = ''; el.style.color = 'var(--text3)'; }
+    });
+    return;
+  }
+
+  const fixedBudget  = Math.round(income * mode.fixed    / 100);
+  const varBudget    = Math.round(income * mode.variable / 100);
+  const saveBudget   = computedSaveTarget;
+  const sa           = saveActual ?? state.savingsAlloc.reduce((s,i)=>s+(+i.amt||0), 0);
+
+  setBudgetLight('light-fixed', 'light-fixed-label', fixed,  fixedBudget, 'expense');
+  setBudgetLight('light-var',   'light-var-label',   variable, varBudget, 'expense');
+  setBudgetLight('light-save',  'light-save-label',  sa,    saveBudget,   'saving');
+}
+
+// ═══════════════════════════════════════
+// RENDER SAVINGS ALLOCATION TABLE（本月儲蓄分配）
+// ═══════════════════════════════════════
+function renderSavingsAlloc() {
+  const container = document.getElementById('savings-alloc-rows');
+  if(!container) return;
+  container.innerHTML = '';
+
+  state.savingsAlloc.forEach((item, idx) => {
+    const row = document.createElement('div');
+    row.className = 'alloc-row fade-in';
+
+    const badgeHtml = item.badge
+      ? `<div class="alloc-badge" style="background:${item.badgeBg};color:${item.badgeColor}">${item.badge}</div>`
+      : '';
+    const delBtn = !item.fixed
+      ? `<div style="margin-top:4px;"><button class="del-btn" onclick="delSavingsAlloc(${idx})" style="width:18px;height:18px;font-size:11px;">×</button></div>`
+      : '';
+
+    row.innerHTML = `
+      <div class="alloc-item-main">
+        ${badgeHtml}
+        <div class="alloc-name">${item.fixed
+          ? `<span>${item.name}</span>`
+          : `<input value="${item.name}" placeholder="項目名稱" onchange="state.savingsAlloc[${idx}].name=this.value;saveState()">`
+        }</div>
+        <div class="alloc-sub">${item.fixed
+          ? item.sub
+          : `<input value="${item.sub}" placeholder="說明（選填）" onchange="state.savingsAlloc[${idx}].sub=this.value;saveState()">`
+        }</div>
+        ${delBtn}
+      </div>
+      <div class="alloc-amt-col">
+        <input type="number" class="alloc-amt-input" value="${item.amt}"
+          oninput="onAllocAmtInput(${idx},this.value)"
+          onchange="onAllocAmtChange(${idx},this.value)">
+        <div class="alloc-budget-hint" id="alloc-hint-${idx}"></div>
+      </div>
+      <div class="alloc-note">${item.fixed
+        ? item.note
+        : `<input value="${item.note}" placeholder="備註（選填）" onchange="state.savingsAlloc[${idx}].note=this.value;saveState()">`
+      }</div>
+    `;
+    container.appendChild(row);
+  });
+  refreshAllocHints();
+  updateAllocSummary();
+}
+
+// oninput：只更新 state 暫存與 hint，不重建 DOM（修正輸入跳掉問題）
+function onAllocAmtInput(idx, val) {
+  state.savingsAlloc[idx].amt = +val || 0;
+  // recalc 會更新：可分配剩餘、實際儲蓄 KPI、燈號、alloc summary
+  // 且不會重建 input DOM，不影響輸入焦點
+  recalc();
+  refreshAllocHints();
+}
+// onchange（離焦 / Enter）：寫入 localStorage
+function onAllocAmtChange(idx, val) {
+  state.savingsAlloc[idx].amt = +val || 0;
+  saveState();
+}
+// 只更新 hint 文字，不碰 input DOM
+function refreshAllocHints() {
+  const target = computedSaveTarget;
+  let running = 0;
+  state.savingsAlloc.forEach((item, idx) => {
+    running += (+item.amt || 0);
+    const hintEl = document.getElementById(`alloc-hint-${idx}`);
+    if(!hintEl) return;
+    // 金額為 0 的列不顯示任何 hint
+    if((+item.amt || 0) === 0) { hintEl.innerHTML = ''; return; }
+    if(target === 0) { hintEl.innerHTML = ''; return; }
+    const remaining = target - running;
+    if(remaining > 0) {
+      hintEl.innerHTML = `<span style="color:var(--text3)">剩 <span style="font-family:'Space Mono';color:var(--teal)">$${fmt(remaining)}</span></span>`;
+    } else if(remaining === 0) {
+      hintEl.innerHTML = `<span style="color:var(--green)">✅ 剛好達標</span>`;
+    } else {
+      // 超出目標 = 多存是好事
+      hintEl.innerHTML = `<span style="color:var(--green)">🎉 超出 $${fmt(Math.abs(remaining))}</span>`;
+    }
+  });
+}
+
+function updateAllocSummary() {
+  const total = state.savingsAlloc.reduce((s,i)=>s+(+i.amt||0),0);
+  const target = computedSaveTarget;
+  const el = document.getElementById('alloc-summary');
+  if(!el) return;
+
+  // 四段達標狀態
+  let color, icon, statusLabel, statusDesc;
+  if(target === 0) {
+    color='var(--text3)'; icon='—';
+    statusLabel='無目標'; statusDesc='請先在「總覽」選擇生活模式，目標將自動計算';
+  } else if(total < target) {
+    const gap = target - total;
+    color='var(--red)'; icon='❌';
+    statusLabel='未達標'; statusDesc=`距目標還差 $${fmt(gap)}，請繼續分配`;
+  } else if(total <= target + 1000) {
+    color='var(--green)'; icon='✅';
+    statusLabel='達標'; statusDesc=`已達模式目標，多存了 $${fmt(total-target)}`;
+  } else if(total <= target + 3000) {
+    color='var(--blue)'; icon='💪';
+    statusLabel='優於目標'; statusDesc=`超出目標 $${fmt(total-target)}，財務執行力很好！`;
+  } else {
+    color='var(--purple)'; icon='🌟';
+    statusLabel='極優目標'; statusDesc=`超出目標 $${fmt(total-target)}，值得肯定，繼續保持！`;
+  }
+
+  const pct = target > 0 ? Math.min(120, Math.round(total/target*100)) : 0;
+
+  el.innerHTML = `
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="font-size:16px">${icon}</span>
+        <span style="font-size:13px;font-weight:700;color:${color}">${statusLabel}</span>
+      </div>
+      <span style="font-family:'Space Mono';font-size:13px;font-weight:700;color:${color}">$${fmt(total)}<span style="font-size:11px;color:var(--text3);font-weight:400"> / $${fmt(target)}</span></span>
+    </div>
+    <div class="prog-track" style="margin-bottom:8px;height:10px;">
+      <div class="prog-fill" style="width:${Math.min(100,pct)}%;background:${color};transition:width .4s"></div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);line-height:1.5">${statusDesc}</div>
+    ${total > target+1000 ? `<div style="margin-top:6px;font-size:10px;color:var(--text3)">目標：$${fmt(target)} · 實際：$${fmt(total)} · 超出：$${fmt(total-target)}</div>` : ''}
+  `;
+}
+
+function addSavingsAlloc() {
+  state.savingsAlloc.push({ badge:'', badgeColor:'', badgeBg:'', name:'自訂項目', sub:'', amt:0, note:'', fixed:false });
+  renderSavingsAlloc();
+  saveState();
+}
+
+function delSavingsAlloc(idx) {
+  state.savingsAlloc.splice(idx,1);
+  renderSavingsAlloc();
+  saveState();
+}
+
+// ═══════════════════════════════════════
+// RENDER SAVING GOALS
+// ═══════════════════════════════════════
+function renderSavingGoals() {
+  const c = document.getElementById('saving-goals-rows');
+  c.innerHTML = '';
+  state.savingGoals.forEach((g, idx) => {
+    const pct = Math.min(100, Math.round(g.current/g.target*100));
+    const colors = ['var(--green)','var(--blue)','var(--purple)','var(--amber)'];
+    const color = colors[idx%4];
+    const div = document.createElement('div');
+    div.style.marginBottom = '12px';
+    div.innerHTML = `
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+        <input value="${g.name}" style="background:none;border:none;color:var(--text);font-size:13px;font-weight:700;font-family:'Noto Sans TC';flex:1;outline:none;" onchange="state.savingGoals[${idx}].name=this.value;saveState()">
+        <button class="del-btn" onclick="state.savingGoals.splice(${idx},1);renderSavingGoals();saveState()">×</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">目標金額</div>
+          <input type="number" value="${g.target}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--teal);font-family:'Space Mono';font-size:12px;padding:5px 8px;width:100%;outline:none;" onchange="state.savingGoals[${idx}].target=+this.value;renderSavingGoals();saveState()">
+        </div>
+        <div><div style="font-size:10px;color:var(--text3);margin-bottom:3px">現有金額</div>
+          <input type="number" value="${g.current}" style="background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--green);font-family:'Space Mono';font-size:12px;padding:5px 8px;width:100%;outline:none;" onchange="state.savingGoals[${idx}].current=+this.value;renderSavingGoals();saveState()">
+        </div>
+      </div>
+      <div class="loan-prog-label">
+        <span style="font-size:11px;color:var(--text3)">達成率 <span style="color:${color};font-family:'Space Mono'">${pct}%</span></span>
+        <span style="font-size:11px;color:var(--text3)">缺口 <span style="color:var(--red);font-family:'Space Mono'">$${fmt(g.target-g.current)}</span></span>
+      </div>
+      <div class="prog-track">
+        <div class="prog-fill" style="width:${pct}%;background:${color}"></div>
+      </div>
+    `;
+    c.appendChild(div);
+  });
+}
+
+function addSavingGoal() {
+  state.savingGoals.push({ name:'新目標', target:0, current:0 });
+  renderSavingGoals();
+  saveState();
+}
+
+// ═══════════════════════════════════════
+// ADD / DELETE ROW
+// ═══════════════════════════════════════
+function addRow(type) {
+  if(type==='income') {
+    state.income.push({ name:'新項目', amt:0, include:true, note:'' });
+    renderIncome();
+  } else if(type==='fixed') {
+    state.fixed.push({ name:'新支出', amt:0 });
+    renderExpenses();
+  } else if(type==='variable') {
+    state.variable.push({ name:'新支出', amt:0 });
+    renderExpenses();
+  }
+  saveState();
+}
+
+function delRow(type, idx) {
+  state[type].splice(idx,1);
+  if(type==='income') renderIncome();
+  else renderExpenses();
+  saveState();
+}
+
+// ═══════════════════════════════════════
+// RECALC
+// ═══════════════════════════════════════
+function fmt(n) { return Math.abs(n).toLocaleString(); }
+function $fmt(n) { return '$' + fmt(n); }
+
+function recalc() {
+  const income = state.income.filter(i=>i.include).reduce((s,i)=>s+i.amt,0);
+  const conservative = state.income[0]?.amt || 0;
+  const fixed = state.fixed.reduce((s,i)=>s+i.amt,0);
+  const variable = state.variable.reduce((s,i)=>s+i.amt,0);
+  const totalExp = fixed + variable;
+  // 由生活模式自動計算儲蓄目標
+  const mode = getActiveMode();
+  const modeSavePct = mode?.save || 20;
+  computedSaveTarget = Math.round(income * modeSavePct / 100);
+  const saveTarget = computedSaveTarget;
+
+  // 更新自動顯示區塊
+  const autoEl = document.getElementById('auto-save-target');
+  const autoBreak = document.getElementById('auto-save-breakdown');
+  if(autoEl) autoEl.textContent = $fmt(saveTarget);
+  if(autoBreak) {
+    const modeName = MODES.find(m=>m.id===selectedMode)?.name || '自訂';
+    autoBreak.innerHTML = `<span style="color:var(--teal)">${modeName}</span> 模式 · 儲蓄比例 <span style="font-family:'Space Mono';color:var(--green)">${modeSavePct}%</span> × 月收入 <span style="font-family:'Space Mono'">${$fmt(income)}</span>`;
+  }
+
+  // 同步分配表的預算提示
+  updateAllocSummary();
+  const loanTotal = state.loans.reduce((s,l)=>s+l.monthly,0);
+  const saveActual = state.savingsAlloc.reduce((s,i)=>s+(+i.amt||0),0); // 實際儲蓄分配合計
+  const remain = income - totalExp - saveActual; // 用實際分配，不用目標
+  const saveRate = income>0 ? Math.round(saveTarget/income*100) : 0;
+
+  // 計算預算上下限（由生活模式決定）
+  const modeObj = getActiveMode();
+  const fixedBudget    = income>0 ? Math.round(income*(modeObj?.fixed||50)/100) : 0;
+  const varBudget      = income>0 ? Math.round(income*(modeObj?.variable||30)/100) : 0;
+  const fixedOver      = fixedBudget>0 && fixed>fixedBudget;
+  const varOver        = varBudget>0   && variable>varBudget;
+  const saveOver       = saveTarget>0  && saveActual>saveTarget; // 儲蓄超過目標（好事，黃色）
+
+  // Overview
+  document.getElementById('ov-income').textContent = $fmt(income);
+
+  // 固定支出 KPI：超標紅色
+  const ovFixed = document.getElementById('ov-fixed');
+  ovFixed.textContent = $fmt(fixed);
+  ovFixed.style.color = fixedOver ? 'var(--red)' : '#fff';
+
+  // 變動支出 KPI：超標紅色
+  const ovVar = document.getElementById('ov-var');
+  ovVar.textContent = $fmt(variable);
+  ovVar.style.color = varOver ? 'var(--red)' : '#fff';
+
+  // 目標儲蓄 KPI：超過目標黃色（鼓勵）
+  const ovSave = document.getElementById('ov-save');
+  ovSave.textContent = $fmt(saveActual); // 顯示實際分配金額
+  ovSave.style.color = saveOver ? 'var(--amber)' : '#fff';
+
+  document.getElementById('ov-loan').textContent = $fmt(loanTotal);
+  document.getElementById('ov-saverate').textContent = saveRate+'%';
+  const remEl = document.getElementById('ov-remain');
+  remEl.textContent = (remain>=0?'+':'-') + $fmt(Math.abs(remain));
+  remEl.style.color = remain>=0 ? 'var(--green)' : 'var(--red)';
+
+  // Bars
+  if(income>0) {
+    const pctF = Math.min(100,Math.round(fixed/income*100));
+    const pctV = Math.min(100,Math.round(variable/income*100));
+    const pctS = Math.min(100,Math.round(saveTarget/income*100));
+    document.getElementById('pct-fixed').textContent = pctF+'%';
+    document.getElementById('pct-var').textContent = pctV+'%';
+    document.getElementById('pct-save').textContent = pctS+'%';
+    document.getElementById('bar-fixed').style.width = pctF+'%';
+    document.getElementById('bar-var').style.width = pctV+'%';
+    document.getElementById('bar-save').style.width = pctS+'%';
+  }
+
+  // Totals
+  document.getElementById('income-total').textContent = $fmt(income);
+  document.getElementById('conservative-income').textContent = $fmt(conservative);
+  document.getElementById('fixed-total').textContent = $fmt(fixed);
+  document.getElementById('var-total').textContent = $fmt(variable);
+
+  // Loan summary in overview
+  const lc = document.getElementById('ov-loans-list');
+  lc.innerHTML = '';
+  state.loans.forEach(l=>{
+    const pct = Math.round((1-l.remain/l.orig)*100);
+    const div = document.createElement('div');
+    div.style.marginBottom='8px';
+    div.innerHTML=`
+      <div class="prog-label"><span>${l.name}</span><span>利率 ${l.rate}% · ${$fmt(l.monthly)}/月</span></div>
+      <div class="prog-track"><div class="prog-fill" style="width:${pct}%;background:var(--teal)"></div></div>
+    `;
+    lc.appendChild(div);
+  });
+
+  // Health score
+  calcHealth(income, fixed, variable, saveTarget, saveRate);
+  // Mode match
+  renderModeMatch(income, fixed, variable, saveActual);
+  // 燈號（傳入 saveActual 讓儲蓄燈號用實際值）
+  updateBudgetLights(income, fixed, variable, saveActual);
+}
+
+// ═══════════════════════════════════════
+// STRATEGY
+// ═══════════════════════════════════════
+function calcStrategy() {
+  const extra = +document.getElementById('extra-payment').value || 0;
+  const sb = document.getElementById('strategy-boxes');
+  if(!sb) return;
+  sb.innerHTML = '';
+
+  // Avalanche: highest rate
+  const sorted_rate = [...state.loans].sort((a,b)=>b.rate-a.rate);
+  // Snowball: lowest balance
+  const sorted_bal = [...state.loans].sort((a,b)=>a.remain-b.remain);
+
+  if(sorted_rate.length===0) return;
+
+  [
+    { title:'❄️ 雪崩法（省最多利息）', loan: sorted_rate[0], desc:`優先還清「${sorted_rate[0].name}」（年利率 ${sorted_rate[0].rate}% 最高）`, bg:'rgba(0,212,200,.07)', color:'var(--teal)' },
+    { title:'⛄ 雪球法（最快還清一筆）', loan: sorted_bal[0], desc:`優先還清「${sorted_bal[0].name}」（剩餘 $${fmt(sorted_bal[0].remain)} 最少）`, bg:'rgba(167,139,250,.07)', color:'var(--purple)' },
+  ].forEach(s => {
+    const months_extra = s.loan.monthly+extra > s.loan.remain*(s.loan.rate/1200)
+      ? Math.ceil(s.loan.remain/(s.loan.monthly+extra - s.loan.remain*(s.loan.rate/1200)))
+      : 999;
+    const div = document.createElement('div');
+    div.className = 'strategy-box';
+    div.style.background = s.bg;
+    div.style.border = `1px solid rgba(100,116,139,.3)`;
+    div.innerHTML = `
+      <div class="strategy-title" style="color:${s.color}">${s.title}</div>
+      <div class="strategy-desc">${s.desc}</div>
+      <div style="margin-top:6px;font-size:11px;color:var(--text2)">
+        加速後預計 <span style="font-family:'Space Mono';color:${s.color}">${months_extra>500?'∞':months_extra}</span> 個月還清
+      </div>
+    `;
+    sb.appendChild(div);
+  });
+}
+
+// ═══════════════════════════════════════
+// HEALTH PANEL
+// ═══════════════════════════════════════
+function calcHealth(income, fixed, variable, save, saveRate) {
+  let score = 100;
+  const items = [];
+
+  const fixedPct = income>0 ? fixed/income*100 : 0;
+  const varPct   = income>0 ? variable/income*100 : 0;
+
+  if(fixedPct > 50) { score -= 15; items.push({color:'var(--red)', text:`固定支出佔收入 ${fixedPct.toFixed(0)}%（建議 ≤50%）`}); }
+  else items.push({color:'var(--green)', text:`固定支出比例良好 ${fixedPct.toFixed(0)}%`});
+
+  if(varPct > 30) { score -= 10; items.push({color:'var(--amber)', text:`變動支出佔收入 ${varPct.toFixed(0)}%（建議 ≤30%）`}); }
+  else items.push({color:'var(--green)', text:`變動支出比例正常 ${varPct.toFixed(0)}%`});
+
+  if(saveRate < 20) { score -= 10; items.push({color:'var(--amber)', text:`儲蓄率 ${saveRate}%（建議 ≥20%）`}); }
+  else items.push({color:'var(--green)', text:`儲蓄率優秀 ${saveRate}%`});
+
+  const loanBurden = income>0 ? state.loans.reduce((s,l)=>s+l.monthly,0)/income*100 : 0;
+  if(loanBurden > 40) { score -= 15; items.push({color:'var(--red)', text:`貸款月付佔收入 ${loanBurden.toFixed(0)}%（建議 ≤40%）`}); }
+  else items.push({color:'var(--green)', text:`貸款負擔合理 ${loanBurden.toFixed(0)}%`});
+
+  score = Math.max(0, score);
+  document.getElementById('health-score').textContent = score;
+  document.getElementById('health-score').style.color = score>=80?'var(--green)':score>=60?'var(--amber)':'var(--red)';
+
+  const hi = document.getElementById('health-items');
+  hi.innerHTML = '';
+  items.forEach(item => {
+    hi.innerHTML += `<div class="diag-item">
+      <div class="diag-dot" style="background:${item.color}"></div>
+      <div class="diag-text">${item.text}</div>
+    </div>`;
+  });
+}
+
+function toggleHealthPanel() {
+  const p = document.getElementById('health-panel');
+  p.classList.toggle('hidden');
+  if(!p.classList.contains('hidden')) {
+    panelMinimized = false;
+    p.classList.remove('minimized');
+    document.getElementById('panel-body').style.display = '';
+    document.getElementById('panel-min-btn').textContent = '−';
+  }
+}
+
+function minimizePanel() {
+  panelMinimized = !panelMinimized;
+  const p = document.getElementById('health-panel');
+  const body = document.getElementById('panel-body');
+  p.classList.toggle('minimized', panelMinimized);
+  body.style.display = panelMinimized ? 'none' : '';
+  document.getElementById('panel-min-btn').textContent = panelMinimized ? '+' : '−';
+}
+
+// ── Drag panel ──
+(function() {
+  const panel = document.getElementById('health-panel');
+  const handle = document.getElementById('panel-drag');
+  let dragging = false, ox=0, oy=0, startRight=0, startBottom=0;
+
+  function getPos(e) {
+    return e.touches ? {x:e.touches[0].clientX, y:e.touches[0].clientY} : {x:e.clientX, y:e.clientY};
+  }
+
+  handle.addEventListener('mousedown', startDrag);
+  handle.addEventListener('touchstart', startDrag, {passive:true});
+
+  function startDrag(e) {
+    if(e.target.tagName==='BUTTON') return;
+    dragging = true;
+    const pos = getPos(e);
+    const rect = panel.getBoundingClientRect();
+    ox = pos.x;
+    oy = pos.y;
+    startRight = window.innerWidth - rect.right;
+    startBottom = window.innerHeight - rect.bottom;
+    panel.style.transition = 'none';
+  }
+
+  document.addEventListener('mousemove', doDrag);
+  document.addEventListener('touchmove', doDrag, {passive:false});
+
+  function doDrag(e) {
+    if(!dragging) return;
+    if(e.cancelable) e.preventDefault();
+    const pos = getPos(e);
+    const dx = pos.x - ox;
+    const dy = pos.y - oy;
+    let newRight = startRight - dx;
+    let newBottom = startBottom + dy;
+    newRight = Math.max(8, Math.min(window.innerWidth - 60, newRight));
+    newBottom = Math.max(8, Math.min(window.innerHeight - 60, newBottom));
+    panel.style.right = newRight + 'px';
+    panel.style.bottom = newBottom + 'px';
+    panel.style.left = 'auto';
+    panel.style.top = 'auto';
+  }
+
+  document.addEventListener('mouseup', ()=>{ dragging=false; panel.style.transition=''; });
+  document.addEventListener('touchend', ()=>{ dragging=false; panel.style.transition=''; });
+})();
+
+// ═══════════════════════════════════════
+// REPORTS
+// ═══════════════════════════════════════
+let activeReport = 0;
+
+function switchReport(n, btn) {
+  activeReport = n;
+  document.querySelectorAll('.rtab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  [0,1,2].forEach(i => {
+    document.getElementById('report-'+i).style.display = i===n?'':'none';
+  });
+  setTimeout(renderReports, 50);
+}
+
+const COLORS = ['#00d4c8','#ff5a6a','#ffb347','#10d98a','#a78bfa','#60a5fa','#f472b6'];
+
+// 從 localStorage 讀取某月的關鍵財務數字
+function getMonthData(monthStr) {
+  try {
+    const raw = localStorage.getItem(KEY_PREFIX + monthStr);
+    if(!raw) return null;
+    const saved = JSON.parse(raw);
+    const income   = (saved.income   || []).filter(i=>i.include).reduce((s,i)=>s+(+i.amt||0), 0);
+    const fixed    = (saved.fixed    || []).reduce((s,i)=>s+(+i.amt||0), 0);
+    const variable = (saved.variable || []).reduce((s,i)=>s+(+i.amt||0), 0);
+    const saving   = (saved.savingsAlloc || []).reduce((s,i)=>s+(+i.amt||0), 0);
+    return { income, fixed, variable, saving, month: monthStr };
+  } catch(e) { return null; }
+}
+
+// 取得前 N 個月的月份字串（由舊到新）
+function getPastMonths(baseMonth, count) {
+  const [y, m] = baseMonth.split('-').map(Number);
+  const result = [];
+  for(let i = count - 1; i >= 0; i--) {
+    let mm = m - i;
+    let yy = y;
+    while(mm <= 0) { mm += 12; yy--; }
+    result.push(`${yy}-${String(mm).padStart(2,'0')}`);
+  }
+  return result;
+}
+
+function renderReports() {
+  const income   = state.income.filter(i=>i.include).reduce((s,i)=>s+i.amt, 0);
+  const fixed    = state.fixed.reduce((s,i)=>s+i.amt, 0);
+  const variable = state.variable.reduce((s,i)=>s+i.amt, 0);
+  const save     = state.savingsAlloc.reduce((s,i)=>s+(+i.amt||0), 0);
+  const curMonth = activeMonth || getCurrentMonth();
+
+  // 上月
+  const [cy, cm] = curMonth.split('-').map(Number);
+  let pm = cm - 1, py = cy;
+  if(pm <= 0) { pm += 12; py--; }
+  const prevMonthStr = `${py}-${String(pm).padStart(2,'0')}`;
+  const prevData = getMonthData(prevMonthStr);
+  const prev = prevData || { income:0, fixed:0, variable:0, saving:0 };
+  const hasPrev = !!prevData;
+
+  if(activeReport===0) {
+    // Expense pie
+    if(chartExpense) chartExpense.destroy();
+    chartExpense = new Chart(document.getElementById('pie-expense'), {
+      type:'doughnut',
+      data:{ labels:['固定支出','變動支出'], datasets:[{ data:[fixed,variable], backgroundColor:['#ff5a6a','#ffb347'], borderWidth:0, hoverOffset:6 }] },
+      options:{ plugins:{ legend:{display:false} }, cutout:'65%', animation:{animateScale:true} }
+    });
+
+    // Allocation pie
+    const remain = Math.max(0, income - fixed - variable - save);
+    if(chartAllocation) chartAllocation.destroy();
+    chartAllocation = new Chart(document.getElementById('pie-allocation'), {
+      type:'doughnut',
+      data:{ labels:['固定支出','變動支出','儲蓄','剩餘'], datasets:[{ data:[fixed,variable,save,remain], backgroundColor:['#ff5a6a','#ffb347','#10d98a','#60a5fa'], borderWidth:0, hoverOffset:6 }] },
+      options:{ plugins:{ legend:{display:false} }, cutout:'65%', animation:{animateScale:true} }
+    });
+
+    document.getElementById('expense-legend').innerHTML = ['固定支出','變動支出','儲蓄','剩餘'].map((l,i)=>`
+      <div class="legend-item">
+        <div class="legend-dot" style="background:${['#ff5a6a','#ffb347','#10d98a','#60a5fa'][i]}"></div>
+        <span>${l}</span>
+      </div>`).join('');
+
+    // 50/30/20
+    const rc = document.getElementById('rule-check');
+    const modeObj = getActiveMode();
+    const targets = { fixed: modeObj?.fixed||50, variable: modeObj?.variable||30, save: modeObj?.save||20 };
+    if(income>0) {
+      const checks = [
+        { label:`固定支出 ≤${targets.fixed}%`, actual:fixed/income*100,    target:targets.fixed,    inv:true },
+        { label:`變動支出 ≤${targets.variable}%`, actual:variable/income*100, target:targets.variable, inv:true },
+        { label:`儲蓄 ≥${targets.save}%`,    actual:save/income*100,     target:targets.save,     inv:false },
+      ];
+      rc.innerHTML = checks.map(c=>{
+        const pass = c.inv ? c.actual<=c.target : c.actual>=c.target;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid var(--border);font-size:12px;">
+          <span style="color:var(--text2)">${c.label}</span>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-family:'Space Mono';font-size:11px;color:var(--text3)">${c.actual.toFixed(1)}%</span>
+            <span style="font-size:14px">${pass?'✅':'⚠️'}</span>
+          </div>
+        </div>`;
+      }).join('');
+    }
+  }
+
+  if(activeReport===1) {
+    // 無上月資料提示
+    if(!hasPrev) {
+      document.getElementById('compare-tbody').innerHTML = `
+        <tr><td colspan="4" style="text-align:center;color:var(--text3);padding:16px;font-size:12px;">
+          ${prevMonthStr} 尚無資料，請先填寫上月資訊
+        </td></tr>`;
+      if(chartCompare) { chartCompare.destroy(); chartCompare = null; }
+      // 清空圖表
+      const ctx = document.getElementById('bar-compare');
+      if(ctx) {
+        chartCompare = new Chart(ctx, {
+          type:'bar',
+          data:{ labels:['收入','固定支出','變動支出','儲蓄'],
+            datasets:[
+              { label:`${prevMonthStr}（無資料）`, data:[0,0,0,0], backgroundColor:'rgba(100,116,139,.2)', borderWidth:0, borderRadius:6 },
+              { label:curMonth, data:[income,fixed,variable,save], backgroundColor:['rgba(0,212,200,.3)','rgba(255,90,106,.3)','rgba(255,179,71,.3)','rgba(16,217,138,.3)'], borderColor:['#00d4c8','#ff5a6a','#ffb347','#10d98a'], borderWidth:1.5, borderRadius:6 },
+            ]},
+          options:{ responsive:true, maintainAspectRatio:false,
+            plugins:{ legend:{ labels:{ color:'#94a3b8', font:{size:11} } } },
+            scales:{ x:{ grid:{color:'rgba(42,63,95,.5)'}, ticks:{color:'#64748b',font:{size:10}} },
+                     y:{ grid:{color:'rgba(42,63,95,.5)'}, ticks:{color:'#64748b',font:{size:10}, callback:v=>'$'+v.toLocaleString()} } } }
+        });
+      }
+      return;
+    }
+
+    // 有上月資料
+    if(chartCompare) chartCompare.destroy();
+    chartCompare = new Chart(document.getElementById('bar-compare'), {
+      type:'bar',
+      data:{
+        labels:['收入','固定支出','變動支出','儲蓄'],
+        datasets:[
+          { label:prevMonthStr, data:[prev.income,prev.fixed,prev.variable,prev.saving], backgroundColor:'rgba(148,163,184,.25)', borderColor:'rgba(148,163,184,.5)', borderWidth:1, borderRadius:6 },
+          { label:curMonth,     data:[income,fixed,variable,save], backgroundColor:['rgba(0,212,200,.3)','rgba(255,90,106,.3)','rgba(255,179,71,.3)','rgba(16,217,138,.3)'], borderColor:['#00d4c8','#ff5a6a','#ffb347','#10d98a'], borderWidth:1.5, borderRadius:6 },
+        ]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ color:'#94a3b8', font:{size:11} } } },
+        scales:{ x:{ grid:{color:'rgba(42,63,95,.5)'}, ticks:{color:'#64748b',font:{size:10}} },
+                 y:{ grid:{color:'rgba(42,63,95,.5)'}, ticks:{color:'#64748b',font:{size:10}, callback:v=>'$'+v.toLocaleString()} } } }
+    });
+
+    const rows = [
+      ['月收入', prev.income, income],
+      ['固定支出', prev.fixed, fixed],
+      ['變動支出', prev.variable, variable],
+      ['儲蓄', prev.saving, save],
+    ];
+    document.getElementById('compare-tbody').innerHTML = rows.map(([label,p,c])=>{
+      const d = c-p;
+      // 收入增加是好事；支出增加是壞事；儲蓄增加是好事
+      const isPositive = label==='固定支出'||label==='變動支出' ? d<0 : d>0;
+      const cls = d===0 ? '' : (isPositive ? 'delta-pos' : 'delta-neg');
+      return `<tr>
+        <td>${label}</td>
+        <td>$${fmt(p)}</td>
+        <td>$${fmt(c)}</td>
+        <td class="${cls}">${d===0?'—':(d>0?'+':'') + '$'+fmt(d)}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  if(activeReport===2) {
+    // 季度趨勢：讀取最近 4 個月的真實資料
+    const monthList = getPastMonths(curMonth, 4);
+    const monthLabels = monthList.map(m => {
+      const [y,mo] = m.split('-');
+      return `${mo}月`;
+    });
+
+    const dataMap = {};
+    monthList.forEach(m => { dataMap[m] = getMonthData(m) || { income:0, fixed:0, variable:0, saving:0 }; });
+    // 當月用 state（最新，可能未存檔）
+    dataMap[curMonth] = { income, fixed, variable, saving: save };
+
+    const incomeData = monthList.map(m => dataMap[m].income);
+    const fixedData  = monthList.map(m => dataMap[m].fixed);
+    const saveData   = monthList.map(m => dataMap[m].saving);
+
+    if(chartTrend) chartTrend.destroy();
+    chartTrend = new Chart(document.getElementById('line-trend'), {
+      type:'line',
+      data:{
+        labels: monthLabels,
+        datasets:[
+          { label:'收入',   data:incomeData, borderColor:'#00d4c8', backgroundColor:'rgba(0,212,200,.08)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#00d4c8' },
+          { label:'固定支出', data:fixedData,  borderColor:'#ff5a6a', backgroundColor:'rgba(255,90,106,.06)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#ff5a6a' },
+          { label:'儲蓄',   data:saveData,   borderColor:'#10d98a', backgroundColor:'rgba(16,217,138,.06)', fill:true, tension:0.4, pointRadius:4, pointBackgroundColor:'#10d98a' },
+        ]
+      },
+      options:{ responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ labels:{ color:'#94a3b8', font:{size:11} } } },
+        scales:{ x:{ grid:{color:'rgba(42,63,95,.5)'}, ticks:{color:'#64748b',font:{size:10}} },
+                 y:{ grid:{color:'rgba(42,63,95,.5)'}, ticks:{color:'#64748b',font:{size:10}, callback:v=>'$'+v.toLocaleString()} } } }
+    });
+
+    // 季度摘要：只計算有資料的月份
+    const validMonths = monthList.filter(m => dataMap[m].income > 0);
+    const avgIncome = validMonths.length ? Math.round(validMonths.reduce((s,m)=>s+dataMap[m].income,0)/validMonths.length) : 0;
+    const avgFixed  = validMonths.length ? Math.round(validMonths.reduce((s,m)=>s+dataMap[m].fixed,0)/validMonths.length)  : 0;
+    const first = dataMap[monthList[0]];
+    const growthPct = first.income > 0 ? Math.round((income-first.income)/first.income*100) : 0;
+    const quarterSave = monthList.reduce((s,m)=>s+dataMap[m].saving, 0);
+
+    document.getElementById('quarter-summary').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+        <div style="background:var(--bg);border-radius:10px;padding:10px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">季平均收入</div>
+          <div style="font-family:'Space Mono';font-size:14px;color:var(--teal)">$${fmt(avgIncome)}</div>
+          <div style="font-size:10px;color:var(--text3);margin-top:2px">${validMonths.length} 個月有資料</div>
+        </div>
+        <div style="background:var(--bg);border-radius:10px;padding:10px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">季平均固定支出</div>
+          <div style="font-family:'Space Mono';font-size:14px;color:var(--red)">$${fmt(avgFixed)}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:10px;padding:10px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">收入趨勢（vs最早月）</div>
+          <div style="font-family:'Space Mono';font-size:14px;color:${growthPct>=0?'var(--green)':'var(--red)'}">${growthPct>=0?'+':''}${growthPct}%</div>
+        </div>
+        <div style="background:var(--bg);border-radius:10px;padding:10px;">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:3px">季度儲蓄合計</div>
+          <div style="font-family:'Space Mono';font-size:14px;color:var(--blue)">$${fmt(quarterSave)}</div>
+        </div>
+      </div>
+      ${validMonths.length < 4 ? `<div style="margin-top:8px;font-size:11px;color:var(--text3);text-align:center;">💡 目前有 ${validMonths.length}/4 個月資料，填寫更多月份後趨勢更準確</div>` : ''}
+    `;
+  }
+}
+
+
+
+// ═══════════════════════════════════════
+// RESET（只清當月）
+// ═══════════════════════════════════════
+function confirmReset() {
+  const month = activeMonth || getCurrentMonth();
+  if(!confirm(`確定要清除 ${month} 的所有資料，重新開始嗎？\n（此操作無法復原）`)) return;
+  localStorage.removeItem(KEY_PREFIX + month);
+  resetStateToDefault();
+  renderModeGrid();
+  renderIncome();
+  renderExpenses();
+  renderLoans();
+  renderSavingsAlloc();
+  renderSavingGoals();
+  recalc();
+  buildMonthSelector(month);
+}
+
+// ═══════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════
+function init() {
+  buildMonthSelector();
+  // 取得當前月份並設為 activeMonth
+  const now = new Date();
+  activeMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+  document.getElementById('month-sel').value = activeMonth;
+
+  const restored = loadState(activeMonth);
+  renderModeGrid();
+  renderIncome();
+  renderExpenses();
+  renderLoans();
+  renderSavingsAlloc();
+  renderSavingGoals();
+  recalc();
+
+  const badge = document.getElementById('save-badge');
+  if(badge && restored) {
+    badge.textContent = `✓ 已載入 ${activeMonth}`;
+    badge.style.opacity = '1';
+    setTimeout(()=>{ badge.textContent='✓ 已存檔'; badge.style.opacity='0'; }, 2500);
+  }
+}
+
+init();
+</script>
+</body>
+</html>
