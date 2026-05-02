@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>財務管理引導器|科學預算法</title>
+<title>財務管理引導器|科學計算法</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700;900&family=Space+Mono:wght@400;700&display=swap');
@@ -1521,16 +1521,109 @@ function renderExpenses() {
 // ═══════════════════════════════════════
 // RENDER LOAN CARDS
 // ═══════════════════════════════════════
+
+// 依剩餘金額+月付款+年利率計算剩餘期數
+function calcRemainingTerm(remain, monthly, rate) {
+  if(remain <= 0 || monthly <= 0) return 0;
+  const r = rate / 1200;
+  if(r === 0) return Math.ceil(remain / monthly);
+  if(monthly <= remain * r) return 9999; // 每月還不夠付利息
+  return Math.ceil(-Math.log(1 - (r * remain) / monthly) / Math.log(1 + r));
+}
+
+// 依剩餘金額+年利率+期數計算月付款
+function calcMonthly(remain, rate, term) {
+  if(term <= 0 || remain <= 0) return 0;
+  const r = rate / 1200;
+  if(r === 0) return Math.round(remain / term);
+  return Math.round(remain * r * Math.pow(1+r, term) / (Math.pow(1+r, term) - 1));
+}
+
+// 預計還清年月字串
+function calcPayoffDate(remainTerms) {
+  if(!remainTerms || remainTerms <= 0 || remainTerms >= 9999) return '—';
+  const now = new Date();
+  const payoff = new Date(now.getFullYear(), now.getMonth() + remainTerms, 1);
+  return `${payoff.getFullYear()}年${payoff.getMonth()+1}月`;
+}
+
+function onTermChange(idx, val) {
+  const customWrap = document.getElementById(`loan-custom-term-${idx}`);
+  if(val === 'custom') {
+    if(customWrap) customWrap.style.display = '';
+  } else {
+    if(customWrap) customWrap.style.display = 'none';
+    const term = +val;
+    state.loans[idx].term = term;
+    state.loans[idx].monthly = calcMonthly(state.loans[idx].remain, state.loans[idx].rate, term);
+    renderLoans(); recalc(); saveState();
+  }
+}
+
+function onCustomTermInput(idx, val) {
+  const term = +val || 0;
+  if(term > 0) {
+    state.loans[idx].term = term;
+    state.loans[idx].monthly = calcMonthly(state.loans[idx].remain, state.loans[idx].rate, term);
+    renderLoans(); recalc(); saveState();
+  }
+}
+
+// 本月已還款：輸入總金額，自動拆分本金/利息，更新剩餘金額
+function applyRepayment(idx) {
+  const input = document.getElementById(`repay-input-${idx}`);
+  const paid = +input.value || 0;
+  if(paid <= 0) return;
+  const loan = state.loans[idx];
+  const monthlyInterest = Math.round(loan.remain * (loan.rate / 1200));
+  const principal = Math.max(0, paid - monthlyInterest);
+  const newRemain = Math.max(0, loan.remain - principal);
+
+  // 顯示拆分結果
+  const infoEl = document.getElementById(`repay-info-${idx}`);
+  if(infoEl) {
+    infoEl.innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-top:8px;">
+        <div style="background:var(--bg);border-radius:8px;padding:6px;text-align:center;">
+          <div style="font-size:9px;color:var(--text3)">利息</div>
+          <div style="font-family:'Space Mono';font-size:12px;color:var(--red)">$${fmt(monthlyInterest)}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:6px;text-align:center;">
+          <div style="font-size:9px;color:var(--text3)">還本金</div>
+          <div style="font-family:'Space Mono';font-size:12px;color:var(--green)">$${fmt(principal)}</div>
+        </div>
+        <div style="background:var(--bg);border-radius:8px;padding:6px;text-align:center;">
+          <div style="font-size:9px;color:var(--text3)">新剩餘</div>
+          <div style="font-family:'Space Mono';font-size:12px;color:var(--teal)">$${fmt(newRemain)}</div>
+        </div>
+      </div>
+      <button onclick="confirmRepayment(${idx},${newRemain})" style="margin-top:8px;width:100%;padding:7px;background:var(--teal);border:none;border-radius:8px;color:var(--bg);font-weight:700;font-size:12px;cursor:pointer;">✅ 確認更新剩餘金額</button>
+    `;
+  }
+}
+
+function confirmRepayment(idx, newRemain) {
+  state.loans[idx].remain = newRemain;
+  renderLoans(); recalc(); saveState();
+}
+
 function renderLoans() {
   const container = document.getElementById('loan-cards');
   container.innerHTML = '';
   state.loans.forEach((loan, idx) => {
-    const pct = Math.round((1 - loan.remain/loan.orig)*100);
-    const colors = ['var(--teal)','var(--red)','var(--purple)'];
-    const color = colors[idx%3];
-    const months = loan.monthly > loan.remain*(loan.rate/1200)
-      ? Math.ceil(loan.remain/(loan.monthly - loan.remain*(loan.rate/1200)))
-      : 999;
+    const pct     = loan.orig > 0 ? Math.round((1 - loan.remain/loan.orig)*100) : 0;
+    const colors  = ['var(--teal)','var(--red)','var(--purple)'];
+    const color   = colors[idx%3];
+    const term    = loan.term || 0;
+    const termOptions = [12,24,36,48,60,72];
+    const isCustom = term > 0 && !termOptions.includes(term);
+    const selectVal = isCustom ? 'custom' : (term || '');
+
+    // 剩餘期數計算
+    const remainTerms  = calcRemainingTerm(loan.remain, loan.monthly, loan.rate);
+    const payoffDate   = calcPayoffDate(remainTerms);
+    const remainLabel  = remainTerms >= 9999 ? '無法還清' : remainTerms > 0 ? `${remainTerms} 個月` : '—';
+
     const card = document.createElement('div');
     card.className = 'loan-card fade-in';
     card.innerHTML = `
@@ -1541,6 +1634,7 @@ function renderLoans() {
           <button class="del-btn" onclick="delLoan(${idx})">×</button>
         </div>
       </div>
+
       <div class="loan-grid">
         <div class="loan-field">
           <div class="loan-field-label">原始金額</div>
@@ -1552,24 +1646,56 @@ function renderLoans() {
         </div>
         <div class="loan-field">
           <div class="loan-field-label">月付款</div>
-          <input type="number" value="${loan.monthly}" onchange="state.loans[${idx}].monthly=+this.value;renderLoans();recalc();saveState()">
+          <input type="number" value="${loan.monthly}" style="color:var(--green);" onchange="state.loans[${idx}].monthly=+this.value;renderLoans();recalc();saveState()">
         </div>
         <div class="loan-field">
           <div class="loan-field-label">年利率 %</div>
           <input type="number" step="0.01" value="${loan.rate}" onchange="state.loans[${idx}].rate=+this.value;renderLoans();recalc();saveState()">
         </div>
         <div class="loan-field">
-          <div class="loan-field-label">預計月數</div>
-          <input readonly value="${months>500?'∞':months+'個月'}" style="color:var(--text2);">
+          <div class="loan-field-label">剩餘期數（自動）</div>
+          <input readonly value="${remainLabel}" style="color:${color};font-weight:700;">
         </div>
         <div class="loan-field">
-          <div class="loan-field-label">清償率</div>
-          <input readonly value="${pct}%" style="color:${color}">
+          <div class="loan-field-label">預計還清</div>
+          <input readonly value="${payoffDate}" style="color:var(--amber);">
         </div>
       </div>
-      <div class="loan-footer">
+
+      <div class="loan-field" style="margin-top:8px;">
+        <div class="loan-field-label">貸款期數（選擇後自動計算月付款）</div>
+        <select onchange="onTermChange(${idx},this.value)" style="background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--teal);font-family:'Space Mono',monospace;font-size:12px;padding:5px 7px;width:100%;outline:none;margin-top:4px;">
+          <option value="" ${!selectVal?'selected':''} disabled>請選擇期數</option>
+          <option value="12"     ${selectVal==12?'selected':''}>12 個月（1 年）</option>
+          <option value="24"     ${selectVal==24?'selected':''}>24 個月（2 年）</option>
+          <option value="36"     ${selectVal==36?'selected':''}>36 個月（3 年）</option>
+          <option value="48"     ${selectVal==48?'selected':''}>48 個月（4 年）</option>
+          <option value="60"     ${selectVal==60?'selected':''}>60 個月（5 年）</option>
+          <option value="72"     ${selectVal==72?'selected':''}>72 個月（6 年）</option>
+          <option value="custom" ${isCustom?'selected':''}>其他（自訂）</option>
+        </select>
+        <div id="loan-custom-term-${idx}" style="margin-top:6px;display:${isCustom?'':'none'}">
+          <input type="number" placeholder="輸入月數（例如：84）" value="${isCustom?term:''}"
+            style="background:var(--bg);border:1px solid var(--teal);border-radius:8px;color:var(--teal);font-family:'Space Mono',monospace;font-size:12px;padding:5px 7px;width:100%;outline:none;"
+            onchange="onCustomTermInput(${idx},this.value)">
+        </div>
+      </div>
+
+      <div style="margin-top:12px;background:var(--bg);border-radius:10px;padding:10px;border:1px solid var(--border);">
+        <div style="font-size:11px;color:var(--text3);margin-bottom:6px;font-weight:700;letter-spacing:.06em;">💳 本月已還款（輸入總金額，自動計算本金/利息）</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <input type="number" id="repay-input-${idx}" placeholder="例如：5771" min="0"
+            style="background:var(--card);border:1px solid var(--border);border-radius:8px;color:var(--teal);font-family:'Space Mono',monospace;font-size:13px;padding:6px 10px;flex:1;outline:none;">
+          <button onclick="applyRepayment(${idx})" style="padding:6px 14px;background:var(--card2);border:1px solid var(--teal);border-radius:8px;color:var(--teal);font-size:12px;cursor:pointer;white-space:nowrap;">計算拆分</button>
+        </div>
+        <div id="repay-info-${idx}"></div>
+      </div>
+
+      <div class="loan-footer" style="margin-top:10px;">
         <div class="loan-prog-label">
-          <span>清償進度</span><span style="color:${color}">${pct}%</span>
+          <span>清償進度</span>
+          <span style="color:var(--text3);font-size:10px;">${loan.orig>0?`$${fmt(loan.orig-loan.remain)} / $${fmt(loan.orig)}`:'—'}</span>
+          <span style="color:${color}">${pct}%</span>
         </div>
         <div class="prog-track">
           <div class="prog-fill" style="width:${pct}%;background:${color}"></div>
@@ -1589,7 +1715,7 @@ function delLoan(idx) {
 }
 
 function addLoan() {
-  state.loans.push({ name:'新貸款', orig:100000, remain:100000, monthly:3000, rate:3.0 });
+  state.loans.push({ name:'新貸款', orig:100000, remain:100000, monthly:0, rate:3.0, term:0 });
   renderLoans();
   saveState();
 }
