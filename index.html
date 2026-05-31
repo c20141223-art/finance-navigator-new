@@ -1312,7 +1312,8 @@ function onMonthChange() {
   const newMonth = document.getElementById('month-sel').value;
   if(newMonth === activeMonth) return; // 沒有真正切換
 
-  // ① 先把「舊月份」資料存起來
+  // ① 先把「舊月份」資料存起來，並保留貸款清單供新月份繼承
+  const prevLoans = JSON.parse(JSON.stringify(state.loans));
   if(activeMonth) {
     try {
       const payload = { ...state, selectedMode, savedAt: new Date().toISOString() };
@@ -1326,6 +1327,11 @@ function onMonthChange() {
   // ③ 嘗試載入新月份資料
   activeMonth = newMonth;
   const restored = loadState(newMonth);
+
+  // ④ 全新月份：沿用上月貸款資料（貸款為長期負債，不需每月重新填寫）
+  if(!restored && prevLoans.length > 0) {
+    state.loans = prevLoans;
+  }
 
   // 重新渲染
   renderModeGrid();
