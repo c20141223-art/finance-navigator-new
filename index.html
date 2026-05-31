@@ -1328,8 +1328,8 @@ function onMonthChange() {
   activeMonth = newMonth;
   const restored = loadState(newMonth);
 
-  // ④ 全新月份：沿用上月貸款資料（貸款為長期負債，不需每月重新填寫）
-  if(!restored && prevLoans.length > 0) {
+  // ④ 目標月份沒有貸款資料時，沿用上月貸款（貸款為長期負債，不需每月重新填寫）
+  if(state.loans.length === 0 && prevLoans.length > 0) {
     state.loans = prevLoans;
   }
 
