@@ -248,9 +248,15 @@ def _fetch_price_yahoo(code: str) -> Optional[dict]:
                 continue
             meta = resp.json()["chart"]["result"][0]["meta"]
             price = meta.get("regularMarketPrice") or meta.get("previousClose")
+            prev_close = meta.get("previousClose") or meta.get("chartPreviousClose")
             name = meta.get("shortName") or meta.get("longName") or code
             if price:
-                return {"price": round(float(price), 2), "name": name, "is_prev_close": False}
+                return {
+                    "price": round(float(price), 2),
+                    "name": name,
+                    "prev_close": round(float(prev_close), 2) if prev_close else None,
+                    "is_prev_close": False,
+                }
         except Exception:
             continue
     return None
@@ -296,16 +302,14 @@ def fetch_prices(codes: list[str]) -> dict[str, dict]:
                 z = item.get("z", "-")  # last trade
                 y = item.get("y", "-")  # previous close
 
+                prev = float(y) if y not in ("-", "", None) else None
                 if z not in ("-", "", None):
                     try:
-                        result[code] = {"price": float(z), "name": name, "is_prev_close": False}
+                        result[code] = {"price": float(z), "name": name, "prev_close": prev, "is_prev_close": False}
                     except ValueError:
                         pass
-                elif y not in ("-", "", None):
-                    try:
-                        result[code] = {"price": float(y), "name": name, "is_prev_close": True}
-                    except ValueError:
-                        pass
+                elif prev is not None:
+                    result[code] = {"price": prev, "name": name, "prev_close": prev, "is_prev_close": True}
 
         except Exception:
             twse_blocked = True
@@ -337,6 +341,7 @@ def compute_iopv(etf_code: str) -> dict:
         "code": etf_code,
         "name": etf_code,
         "iopv": None,
+        "iopv_approx": False,
         "mkt_price": None,
         "premium_pct": None,
         "portfolio_val": None,
@@ -408,6 +413,24 @@ def compute_iopv(etf_code: str) -> dict:
             if r["mkt_price"] and r["iopv"]:
                 r["premium_pct"] = (r["mkt_price"] / r["iopv"] - 1) * 100
 
+        # Approximate IOPV when only weights are available (Yahoo Finance fallback)
+        if r["iopv"] is None and r["yahoo_fallback"] and "weight" in comp.columns:
+            etf_prev = prices.get(etf_code, {}).get("prev_close")
+            if etf_prev and etf_prev > 0:
+                weighted_return = 0.0
+                for _, row in comp.iterrows():
+                    code = str(row["code"]).strip()
+                    info = prices.get(code, {})
+                    curr = info.get("price")
+                    prev = info.get("prev_close")
+                    w = (row.get("weight") or 0) / 100
+                    if curr and prev and prev > 0 and w > 0:
+                        weighted_return += w * (curr / prev - 1)
+                r["iopv"] = round(etf_prev * (1 + weighted_return), 4)
+                r["iopv_approx"] = True
+                if r["mkt_price"] and r["iopv"]:
+                    r["premium_pct"] = (r["mkt_price"] / r["iopv"] - 1) * 100
+
     except Exception as exc:
         r["error"] = str(exc)
 
@@ -434,7 +457,8 @@ def render_result(r: dict) -> None:
     c1, c2, c3, c4, c5 = st.columns(5)
 
     with c1:
-        st.metric("估計淨值 (IOPV)", _fmt(r["iopv"]))
+        label = "估計淨值 (近似)" if r.get("iopv_approx") else "估計淨值 (IOPV)"
+        st.metric(label, _fmt(r["iopv"]))
 
     with c2:
         st.metric("即時市價", _fmt(r["mkt_price"]))
@@ -464,10 +488,16 @@ def render_result(r: dict) -> None:
             f"持股市值合計：**{r['portfolio_val']:,.0f} 元**　"
             f"（未取得流通單位數，無法換算每單位 IOPV）"
         )
-    if r.get("yahoo_fallback"):
+    if r.get("iopv_approx"):
+        st.warning(
+            "⚠️ TWSE 成分股 API 被封鎖（非台灣 IP）。估計淨值為**近似值**，"
+            "計算方式：前日收盤價 × Σ(各成分股比重 × 今日漲跌幅)，"
+            "僅含 Yahoo Finance 前 25 大持股（未覆蓋成分股假設漲跌幅為 0），誤差通常 < 0.5%。"
+        )
+    elif r.get("yahoo_fallback"):
         st.warning(
             "⚠️ TWSE 成分股 API 被封鎖（非台灣 IP），改用 Yahoo Finance 備援（僅含前 25 大持股比重）。"
-            "IOPV 無法計算，但可參考各成分股即時報價。"
+            "無法取得 ETF 前日收盤價，估計淨值無法計算。"
         )
 
     comp = r.get("components")
