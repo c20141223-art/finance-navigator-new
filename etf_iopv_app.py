@@ -85,44 +85,92 @@ def _parse_twse_response(js: dict, etf_code: str) -> tuple[pd.DataFrame, Optiona
     return df, units, title
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _yahoo_auth() -> tuple[dict, str]:
+    """
+    Obtain Yahoo Finance auth cookies + crumb.
+    Yahoo Finance v10 API requires a crumb since 2023.
+    Cached for 1 hour.
+    """
+    try:
+        r1 = requests.get(
+            "https://fc.yahoo.com",
+            headers={"User-Agent": _UA},
+            timeout=10,
+            allow_redirects=True,
+        )
+        cookies = dict(r1.cookies)
+        for host in ["query1", "query2"]:
+            try:
+                r2 = requests.get(
+                    f"https://{host}.finance.yahoo.com/v1/test/getcrumb",
+                    headers={"User-Agent": _UA},
+                    cookies=cookies,
+                    timeout=10,
+                )
+                if r2.status_code == 200 and r2.text.strip():
+                    return cookies, r2.text.strip()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return {}, ""
+
+
 def _fetch_components_yahoo(etf_code: str) -> tuple[pd.DataFrame, None, str]:
     """
     Fallback: fetch top holdings from Yahoo Finance quoteSummary API.
     Returns weight percentages only (no share counts → IOPV not computable).
     """
-    resp = requests.get(
-        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{etf_code}.TW",
-        params={"modules": "topHoldings,price"},
-        headers={"User-Agent": _UA, "Accept": "application/json"},
-        timeout=12,
-    )
-    resp.raise_for_status()
-    if not resp.text.strip():
-        raise ValueError("Yahoo Finance 無回應")
+    cookies, crumb = _yahoo_auth()
+    params: dict = {"modules": "topHoldings,price"}
+    if crumb:
+        params["crumb"] = crumb
 
-    data = resp.json()
-    result = data.get("quoteSummary", {}).get("result") or []
-    if not result:
-        raise ValueError("Yahoo Finance 無此 ETF 資料")
+    last_err = None
+    for host in ["query1", "query2"]:
+        try:
+            resp = requests.get(
+                f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{etf_code}.TW",
+                params=params,
+                headers={"User-Agent": _UA, "Accept": "application/json"},
+                cookies=cookies,
+                timeout=12,
+            )
+            resp.raise_for_status()
+            if not resp.text.strip():
+                last_err = "Yahoo Finance 無回應"
+                continue
 
-    res0 = result[0]
-    holdings = res0.get("topHoldings", {}).get("holdings", [])
-    if not holdings:
-        raise ValueError("Yahoo Finance 無持股資料（可能僅提供 US ETF 成分）")
+            data = resp.json()
+            result = data.get("quoteSummary", {}).get("result") or []
+            if not result:
+                last_err = "Yahoo Finance 無此 ETF 資料"
+                continue
 
-    title = res0.get("price", {}).get("shortName", etf_code)
-    rows = []
-    for h in holdings:
-        symbol = h.get("symbol", "")
-        # Strip .TW / .TWO suffix to get bare stock code
-        code = re.sub(r"\.(TW|TWO)$", "", symbol)
-        rows.append({
-            "code": code,
-            "name": h.get("holdingName", code),
-            "weight": round((h.get("holdingPercent", {}).get("raw") or 0) * 100, 2),
-        })
+            res0 = result[0]
+            holdings = res0.get("topHoldings", {}).get("holdings", [])
+            if not holdings:
+                raise ValueError("Yahoo Finance 無持股資料（台灣 ETF 可能未收錄）")
 
-    return pd.DataFrame(rows), None, title
+            title = (res0.get("price") or {}).get("shortName") or etf_code
+            rows = []
+            for h in holdings:
+                symbol = h.get("symbol", "")
+                code = re.sub(r"\.(TW|TWO)$", "", symbol)
+                rows.append({
+                    "code": code,
+                    "name": h.get("holdingName", code),
+                    "weight": round((h.get("holdingPercent", {}).get("raw") or 0) * 100, 2),
+                })
+
+            return pd.DataFrame(rows), None, title
+
+        except Exception as exc:
+            last_err = str(exc)
+            continue
+
+    raise ValueError(f"Yahoo Finance 失敗：{last_err}")
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -150,16 +198,21 @@ def fetch_etf_components(
                 timeout=12,
             )
             resp.raise_for_status()
-            if not resp.text.strip():
-                errors.append(f"TWSE 回傳空白（IP 被封鎖）")
+            body = resp.text.strip()
+            if not body:
+                errors.append("TWSE 回傳空白（IP 被封鎖）")
                 continue
-            js = resp.json()
+            try:
+                js = resp.json()
+            except ValueError:
+                errors.append("TWSE 回傳非 JSON（防火牆頁面，IP 被封鎖）")
+                continue
             if js.get("stat") != "OK":
                 errors.append(f"TWSE stat={js.get('stat')}")
                 continue
             return _parse_twse_response(js, etf_code)
         except Exception as exc:
-            errors.append(f"TWSE: {exc}")
+            errors.append(f"TWSE 連線失敗: {type(exc).__name__}")
 
     # Fallback: Yahoo Finance
     try:
