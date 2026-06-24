@@ -45,47 +45,16 @@ _MIS_HEADERS = {**_TWSE_HEADERS, "Referer": "https://mis.twse.com.tw/"}
 # API — ETF Component Stocks
 # ─────────────────────────────────────────────────────────────────────────────
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_etf_components(
-    etf_code: str,
-) -> tuple[Optional[pd.DataFrame], Optional[float], str]:
-    """
-    Fetch ETF component stocks from TWSE ETFund API.
-    Response JSON fields (example for 0050):
-      stat, title, fields, data (list of rows), notes
-    Returns (df, units_outstanding, etf_title).  Cached 5 min.
-    """
-    resp = requests.get(
-        "https://www.twse.com.tw/fund/ETFund",
-        params={
-            "response": "json",
-            "stockNo": etf_code.strip(),
-            "_": int(time.time() * 1000),  # cache-bust
-        },
-        headers=_TWSE_HEADERS,
-        timeout=15,
-    )
-    resp.raise_for_status()
-    if not resp.text.strip():
-        raise ValueError(
-            "TWSE ETFund API 回傳空白（伺服器 IP 可能被封鎖）。"
-            "成分股資料需從台灣本地 IP 取得，建議改在本機執行。"
-        )
-    js = resp.json()
-
-    if js.get("stat") != "OK":
-        raise ValueError(f"證交所回傳：{js.get('stat', '未知錯誤')}")
-
+def _parse_twse_response(js: dict, etf_code: str) -> tuple[pd.DataFrame, Optional[float], str]:
+    """Parse TWSE ETFund JSON into standard DataFrame."""
     fields: list[str] = js.get("fields", [])
     rows: list[list] = js.get("data", [])
     title: str = js.get("title", etf_code)
 
     if not rows:
-        raise ValueError(f"{etf_code} 無成分股資料（請確認代號正確）")
+        raise ValueError(f"{etf_code} 無成分股資料（代號可能有誤）")
 
     df = pd.DataFrame(rows, columns=fields)
-
-    # Map varying column names to standard keys
     rename: dict[str, str] = {}
     for col in df.columns:
         s = re.sub(r"[（）()\s元%％]", "", col)
@@ -100,16 +69,12 @@ def fetch_etf_components(
         elif re.search(r"比例|比重|佔淨值", s):
             rename[col] = "weight"
     df = df.rename(columns=rename)
-
     for col in ["shares", "mkt_val", "weight"]:
         if col in df.columns:
             df[col] = pd.to_numeric(
-                df[col].astype(str).str.replace(",", "").str.strip(),
-                errors="coerce",
+                df[col].astype(str).str.replace(",", "").str.strip(), errors="coerce"
             )
 
-    # Try to extract total units outstanding from notes
-    # Typical note: "基金單位總數：3,671,000,000"
     units: Optional[float] = None
     for note in js.get("notes", []):
         m = re.search(r"單位[數總]*\s*[：:]\s*([\d,]+)", str(note))
@@ -118,6 +83,95 @@ def fetch_etf_components(
             break
 
     return df, units, title
+
+
+def _fetch_components_yahoo(etf_code: str) -> tuple[pd.DataFrame, None, str]:
+    """
+    Fallback: fetch top holdings from Yahoo Finance quoteSummary API.
+    Returns weight percentages only (no share counts → IOPV not computable).
+    """
+    resp = requests.get(
+        f"https://query1.finance.yahoo.com/v10/finance/quoteSummary/{etf_code}.TW",
+        params={"modules": "topHoldings,price"},
+        headers={"User-Agent": _UA, "Accept": "application/json"},
+        timeout=12,
+    )
+    resp.raise_for_status()
+    if not resp.text.strip():
+        raise ValueError("Yahoo Finance 無回應")
+
+    data = resp.json()
+    result = data.get("quoteSummary", {}).get("result") or []
+    if not result:
+        raise ValueError("Yahoo Finance 無此 ETF 資料")
+
+    res0 = result[0]
+    holdings = res0.get("topHoldings", {}).get("holdings", [])
+    if not holdings:
+        raise ValueError("Yahoo Finance 無持股資料（可能僅提供 US ETF 成分）")
+
+    title = res0.get("price", {}).get("shortName", etf_code)
+    rows = []
+    for h in holdings:
+        symbol = h.get("symbol", "")
+        # Strip .TW / .TWO suffix to get bare stock code
+        code = re.sub(r"\.(TW|TWO)$", "", symbol)
+        rows.append({
+            "code": code,
+            "name": h.get("holdingName", code),
+            "weight": round((h.get("holdingPercent", {}).get("raw") or 0) * 100, 2),
+        })
+
+    return pd.DataFrame(rows), None, title
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_etf_components(
+    etf_code: str,
+) -> tuple[Optional[pd.DataFrame], Optional[float], str]:
+    """
+    Fetch ETF component stocks. Tries sources in order:
+    1. TWSE ETFund API (full data: share counts + units outstanding)
+    2. TWSE ETFund RWD API (alternate URL)
+    3. Yahoo Finance topHoldings (partial: weights only, no IOPV)
+    """
+    errors: list[str] = []
+
+    for url in [
+        "https://www.twse.com.tw/fund/ETFund",
+        "https://www.twse.com.tw/rwd/zh/fund/ETFund",
+    ]:
+        try:
+            resp = requests.get(
+                url,
+                params={"response": "json", "stockNo": etf_code.strip(),
+                        "_": int(time.time() * 1000)},
+                headers=_TWSE_HEADERS,
+                timeout=12,
+            )
+            resp.raise_for_status()
+            if not resp.text.strip():
+                errors.append(f"TWSE 回傳空白（IP 被封鎖）")
+                continue
+            js = resp.json()
+            if js.get("stat") != "OK":
+                errors.append(f"TWSE stat={js.get('stat')}")
+                continue
+            return _parse_twse_response(js, etf_code)
+        except Exception as exc:
+            errors.append(f"TWSE: {exc}")
+
+    # Fallback: Yahoo Finance
+    try:
+        df, units, title = _fetch_components_yahoo(etf_code)
+        return df, units, title
+    except Exception as exc:
+        errors.append(f"Yahoo: {exc}")
+
+    raise ValueError(
+        f"所有資料來源均失敗。TWSE 可能封鎖此 IP，Yahoo Finance 可能無此 ETF 資料。"
+        f"（詳情：{' / '.join(errors[:3])}）"
+    )
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -236,6 +290,7 @@ def compute_iopv(etf_code: str) -> dict:
         "units": None,
         "components": None,
         "rt_coverage": None,  # % of components with live price
+        "yahoo_fallback": False,
         "error": None,
         "ts": datetime.now().strftime("%H:%M:%S"),
     }
@@ -244,6 +299,10 @@ def compute_iopv(etf_code: str) -> dict:
         df, units, title = fetch_etf_components(etf_code)
         r["name"] = title
         r["units"] = units
+
+        # Detect if this came from Yahoo Finance fallback (no share counts)
+        if "shares" not in df.columns:
+            r["yahoo_fallback"] = True
 
         if "code" not in df.columns:
             r["error"] = "無法識別成分股代號欄位（API 格式可能已變更）"
@@ -351,6 +410,11 @@ def render_result(r: dict) -> None:
         st.info(
             f"持股市值合計：**{r['portfolio_val']:,.0f} 元**　"
             f"（未取得流通單位數，無法換算每單位 IOPV）"
+        )
+    if r.get("yahoo_fallback"):
+        st.warning(
+            "⚠️ TWSE 成分股 API 被封鎖（非台灣 IP），改用 Yahoo Finance 備援（僅含前 25 大持股比重）。"
+            "IOPV 無法計算，但可參考各成分股即時報價。"
         )
 
     comp = r.get("components")
