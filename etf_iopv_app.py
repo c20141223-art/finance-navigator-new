@@ -1,0 +1,561 @@
+"""
+台股 ETF 即時估計淨值計算工具 (IOPV Calculator)
+Data sources: Taiwan Stock Exchange (TWSE) APIs
+"""
+
+import re
+import time
+from datetime import datetime
+from typing import Optional
+
+import pandas as pd
+import requests
+import streamlit as st
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Page config
+# ─────────────────────────────────────────────────────────────────────────────
+
+st.set_page_config(
+    page_title="台股 ETF 即時估計淨值",
+    page_icon="📊",
+    layout="wide",
+)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HTTP headers — TWSE requires a matching Referer
+# ─────────────────────────────────────────────────────────────────────────────
+
+_UA = (
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/120.0.0.0 Safari/537.36"
+)
+_TWSE_HEADERS = {
+    "User-Agent": _UA,
+    "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-TW,zh;q=0.9,en-US;q=0.8",
+    "Referer": "https://www.twse.com.tw/",
+}
+_MIS_HEADERS = {**_TWSE_HEADERS, "Referer": "https://mis.twse.com.tw/"}
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API — ETF Component Stocks
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _parse_twse_response(js: dict, etf_code: str) -> tuple[pd.DataFrame, Optional[float], str]:
+    """Parse TWSE ETFund JSON into standard DataFrame."""
+    fields: list[str] = js.get("fields", [])
+    rows: list[list] = js.get("data", [])
+    title: str = js.get("title", etf_code)
+
+    if not rows:
+        raise ValueError(f"{etf_code} 無成分股資料（代號可能有誤）")
+
+    df = pd.DataFrame(rows, columns=fields)
+    rename: dict[str, str] = {}
+    for col in df.columns:
+        s = re.sub(r"[（）()\s元%％]", "", col)
+        if re.search(r"代號|代碼", s):
+            rename[col] = "code"
+        elif re.search(r"名稱", s):
+            rename[col] = "name"
+        elif re.search(r"股數", s):
+            rename[col] = "shares"
+        elif re.search(r"市值", s):
+            rename[col] = "mkt_val"
+        elif re.search(r"比例|比重|佔淨值", s):
+            rename[col] = "weight"
+    df = df.rename(columns=rename)
+    for col in ["shares", "mkt_val", "weight"]:
+        if col in df.columns:
+            df[col] = pd.to_numeric(
+                df[col].astype(str).str.replace(",", "").str.strip(), errors="coerce"
+            )
+
+    units: Optional[float] = None
+    for note in js.get("notes", []):
+        m = re.search(r"單位[數總]*\s*[：:]\s*([\d,]+)", str(note))
+        if m:
+            units = float(m.group(1).replace(",", ""))
+            break
+
+    return df, units, title
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _yahoo_auth() -> tuple[dict, str]:
+    """
+    Obtain Yahoo Finance auth cookies + crumb.
+    Yahoo Finance v10 API requires a crumb since 2023.
+    Cached for 1 hour.
+    """
+    try:
+        r1 = requests.get(
+            "https://fc.yahoo.com",
+            headers={"User-Agent": _UA},
+            timeout=10,
+            allow_redirects=True,
+        )
+        cookies = dict(r1.cookies)
+        for host in ["query1", "query2"]:
+            try:
+                r2 = requests.get(
+                    f"https://{host}.finance.yahoo.com/v1/test/getcrumb",
+                    headers={"User-Agent": _UA},
+                    cookies=cookies,
+                    timeout=10,
+                )
+                if r2.status_code == 200 and r2.text.strip():
+                    return cookies, r2.text.strip()
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return {}, ""
+
+
+def _fetch_components_yahoo(etf_code: str) -> tuple[pd.DataFrame, None, str]:
+    """
+    Fallback: fetch top holdings from Yahoo Finance quoteSummary API.
+    Returns weight percentages only (no share counts → IOPV not computable).
+    """
+    cookies, crumb = _yahoo_auth()
+    params: dict = {"modules": "topHoldings,price"}
+    if crumb:
+        params["crumb"] = crumb
+
+    last_err = None
+    for host in ["query1", "query2"]:
+        try:
+            resp = requests.get(
+                f"https://{host}.finance.yahoo.com/v10/finance/quoteSummary/{etf_code}.TW",
+                params=params,
+                headers={"User-Agent": _UA, "Accept": "application/json"},
+                cookies=cookies,
+                timeout=12,
+            )
+            resp.raise_for_status()
+            if not resp.text.strip():
+                last_err = "Yahoo Finance 無回應"
+                continue
+
+            data = resp.json()
+            result = data.get("quoteSummary", {}).get("result") or []
+            if not result:
+                last_err = "Yahoo Finance 無此 ETF 資料"
+                continue
+
+            res0 = result[0]
+            holdings = res0.get("topHoldings", {}).get("holdings", [])
+            if not holdings:
+                raise ValueError("Yahoo Finance 無持股資料（台灣 ETF 可能未收錄）")
+
+            title = (res0.get("price") or {}).get("shortName") or etf_code
+            rows = []
+            for h in holdings:
+                symbol = h.get("symbol", "")
+                code = re.sub(r"\.(TW|TWO)$", "", symbol)
+                rows.append({
+                    "code": code,
+                    "name": h.get("holdingName", code),
+                    "weight": round((h.get("holdingPercent", {}).get("raw") or 0) * 100, 2),
+                })
+
+            return pd.DataFrame(rows), None, title
+
+        except Exception as exc:
+            last_err = str(exc)
+            continue
+
+    raise ValueError(f"Yahoo Finance 失敗：{last_err}")
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_etf_components(
+    etf_code: str,
+) -> tuple[Optional[pd.DataFrame], Optional[float], str]:
+    """
+    Fetch ETF component stocks. Tries sources in order:
+    1. TWSE ETFund API (full data: share counts + units outstanding)
+    2. TWSE ETFund RWD API (alternate URL)
+    3. Yahoo Finance topHoldings (partial: weights only, no IOPV)
+    """
+    errors: list[str] = []
+
+    for url in [
+        "https://www.twse.com.tw/fund/ETFund",
+        "https://www.twse.com.tw/rwd/zh/fund/ETFund",
+    ]:
+        try:
+            resp = requests.get(
+                url,
+                params={"response": "json", "stockNo": etf_code.strip(),
+                        "_": int(time.time() * 1000)},
+                headers=_TWSE_HEADERS,
+                timeout=12,
+            )
+            resp.raise_for_status()
+            body = resp.text.strip()
+            if not body:
+                errors.append("TWSE 回傳空白（IP 被封鎖）")
+                continue
+            try:
+                js = resp.json()
+            except ValueError:
+                errors.append("TWSE 回傳非 JSON（防火牆頁面，IP 被封鎖）")
+                continue
+            if js.get("stat") != "OK":
+                errors.append(f"TWSE stat={js.get('stat')}")
+                continue
+            return _parse_twse_response(js, etf_code)
+        except Exception as exc:
+            errors.append(f"TWSE 連線失敗: {type(exc).__name__}")
+
+    # Fallback: Yahoo Finance
+    try:
+        df, units, title = _fetch_components_yahoo(etf_code)
+        return df, units, title
+    except Exception as exc:
+        errors.append(f"Yahoo: {exc}")
+
+    raise ValueError(
+        f"所有資料來源均失敗。TWSE 可能封鎖此 IP，Yahoo Finance 可能無此 ETF 資料。"
+        f"（詳情：{' / '.join(errors[:3])}）"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# API — Real-time Stock Prices
+# Primary: TWSE MIS  |  Fallback: Yahoo Finance (works globally)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fetch_price_yahoo(code: str) -> Optional[dict]:
+    """
+    Fetch single stock price from Yahoo Finance chart API.
+    Taiwan TSE stocks use suffix .TW, OTC stocks use .TWO
+    """
+    for suffix in [".TW", ".TWO"]:
+        try:
+            resp = requests.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{code}{suffix}",
+                headers={"User-Agent": _UA},
+                timeout=8,
+            )
+            if resp.status_code != 200 or not resp.text.strip():
+                continue
+            meta = resp.json()["chart"]["result"][0]["meta"]
+            price = meta.get("regularMarketPrice") or meta.get("previousClose")
+            name = meta.get("shortName") or meta.get("longName") or code
+            if price:
+                return {"price": round(float(price), 2), "name": name, "is_prev_close": False}
+        except Exception:
+            continue
+    return None
+
+
+def fetch_prices(codes: list[str]) -> dict[str, dict]:
+    """
+    Fetch real-time prices. Tries TWSE MIS first; falls back to Yahoo Finance
+    for any codes that fail or return empty responses.
+
+    MIS fields: c=code, n=name, z=last trade, y=previous close
+    """
+    if not codes:
+        return {}
+
+    result: dict[str, dict] = {}
+    twse_blocked = False
+
+    for i in range(0, len(codes), 100):
+        chunk = codes[i : i + 100]
+        tse = "|".join(f"tse_{c}.tw" for c in chunk)
+        otc = "|".join(f"otc_{c}.tw" for c in chunk)
+
+        try:
+            resp = requests.get(
+                "https://mis.twse.com.tw/stock/api/getStockInfo.jsp",
+                params={"ex_ch": f"{tse}|{otc}", "json": "1", "delay": "0"},
+                headers=_MIS_HEADERS,
+                timeout=15,
+            )
+            resp.raise_for_status()
+
+            if not resp.text.strip():
+                twse_blocked = True
+                break
+
+            for item in resp.json().get("msgArray", []):
+                code = item.get("c", "").strip()
+                if not code or code in result:
+                    continue
+
+                name = item.get("n", code)
+                z = item.get("z", "-")  # last trade
+                y = item.get("y", "-")  # previous close
+
+                if z not in ("-", "", None):
+                    try:
+                        result[code] = {"price": float(z), "name": name, "is_prev_close": False}
+                    except ValueError:
+                        pass
+                elif y not in ("-", "", None):
+                    try:
+                        result[code] = {"price": float(y), "name": name, "is_prev_close": True}
+                    except ValueError:
+                        pass
+
+        except Exception:
+            twse_blocked = True
+            break
+
+    # Fallback: Yahoo Finance for any missing codes
+    missing = [c for c in codes if c not in result]
+    if missing:
+        if twse_blocked:
+            st.info("⚠️ TWSE 行情 API 無法連線，改用 Yahoo Finance 備援資料（價格可能延遲 15 分鐘）")
+        for code in missing:
+            data = _fetch_price_yahoo(code)
+            if data:
+                result[code] = data
+
+    return result
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# IOPV Calculation
+# ─────────────────────────────────────────────────────────────────────────────
+
+def compute_iopv(etf_code: str) -> dict:
+    """
+    Compute IOPV for one ETF.
+    Formula: Σ(component_real_time_price × shares_held) / units_outstanding
+    """
+    r: dict = {
+        "code": etf_code,
+        "name": etf_code,
+        "iopv": None,
+        "mkt_price": None,
+        "premium_pct": None,
+        "portfolio_val": None,
+        "units": None,
+        "components": None,
+        "rt_coverage": None,  # % of components with live price
+        "yahoo_fallback": False,
+        "error": None,
+        "ts": datetime.now().strftime("%H:%M:%S"),
+    }
+
+    try:
+        df, units, title = fetch_etf_components(etf_code)
+        r["name"] = title
+        r["units"] = units
+
+        # Detect if this came from Yahoo Finance fallback (no share counts)
+        if "shares" not in df.columns:
+            r["yahoo_fallback"] = True
+
+        if "code" not in df.columns:
+            r["error"] = "無法識別成分股代號欄位（API 格式可能已變更）"
+            return r
+
+        stock_codes = df["code"].dropna().astype(str).str.strip().tolist()
+        prices = fetch_prices(list(set(stock_codes + [etf_code])))
+
+        # ETF's own market price (same MIS API)
+        etf_info = prices.get(etf_code, {})
+        r["mkt_price"] = etf_info.get("price")
+        if title == etf_code:
+            r["name"] = etf_info.get("name", etf_code)
+
+        # Annotate each component with live price and contribution
+        comp = df.copy()
+        comp["rt_price"] = pd.NA
+        comp["price_note"] = ""
+        comp["contrib"] = pd.NA
+
+        total_val = 0.0
+        rt_count = 0
+        has_shares = "shares" in comp.columns
+
+        for idx, row in comp.iterrows():
+            code = str(row["code"]).strip()
+            info = prices.get(code, {})
+            price = info.get("price")
+
+            if price is not None:
+                comp.at[idx, "rt_price"] = price
+                if info.get("is_prev_close"):
+                    comp.at[idx, "price_note"] = "前日收盤(估)"
+                else:
+                    rt_count += 1
+
+                if has_shares and pd.notna(row.get("shares")):
+                    val = price * float(row["shares"])
+                    comp.at[idx, "contrib"] = val
+                    total_val += val
+            else:
+                comp.at[idx, "price_note"] = "無法取得"
+
+        r["components"] = comp
+        r["portfolio_val"] = total_val or None
+        r["rt_coverage"] = round(rt_count / len(stock_codes) * 100, 1) if stock_codes else None
+
+        if units and units > 0 and total_val > 0:
+            r["iopv"] = total_val / units
+            if r["mkt_price"] and r["iopv"]:
+                r["premium_pct"] = (r["mkt_price"] / r["iopv"] - 1) * 100
+
+    except Exception as exc:
+        r["error"] = str(exc)
+
+    return r
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# UI helpers
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _fmt(v, dec: int = 2, na: str = "N/A") -> str:
+    if v is None or (isinstance(v, float) and pd.isna(v)):
+        return na
+    return f"{v:,.{dec}f}"
+
+
+def render_result(r: dict) -> None:
+    if r["error"]:
+        st.error(f"**{r['code']}** 查詢失敗：{r['error']}")
+        return
+
+    st.markdown(f"### {r['code']} — {r['name']}")
+
+    c1, c2, c3, c4, c5 = st.columns(5)
+
+    with c1:
+        st.metric("估計淨值 (IOPV)", _fmt(r["iopv"]))
+
+    with c2:
+        st.metric("即時市價", _fmt(r["mkt_price"]))
+
+    with c3:
+        pct = r["premium_pct"]
+        if pct is not None:
+            label = "溢價" if pct > 0 else "折價" if pct < 0 else "平價"
+            st.metric("折溢價", f"{pct:+.3f}%", delta=label, delta_color="inverse")
+        else:
+            st.metric("折溢價", "N/A")
+
+    with c4:
+        u = r["units"]
+        st.metric("流通單位數", f"{u / 1e8:.2f} 億" if u else "N/A")
+
+    with c5:
+        cov = r["rt_coverage"]
+        st.metric(
+            "即時報價覆蓋",
+            f"{cov:.0f}%" if cov is not None else "N/A",
+            help="有即時成交價（非前日收盤）的成分股比例",
+        )
+
+    if r["portfolio_val"] is not None and r["iopv"] is None:
+        st.info(
+            f"持股市值合計：**{r['portfolio_val']:,.0f} 元**　"
+            f"（未取得流通單位數，無法換算每單位 IOPV）"
+        )
+    if r.get("yahoo_fallback"):
+        st.warning(
+            "⚠️ TWSE 成分股 API 被封鎖（非台灣 IP），改用 Yahoo Finance 備援（僅含前 25 大持股比重）。"
+            "IOPV 無法計算，但可參考各成分股即時報價。"
+        )
+
+    comp = r.get("components")
+    if comp is not None and len(comp) > 0:
+        with st.expander(f"成分股明細（共 {len(comp)} 檔）", expanded=False):
+            disp: dict[str, pd.Series] = {}
+            if "code" in comp.columns:
+                disp["代號"] = comp["code"]
+            if "name" in comp.columns:
+                disp["名稱"] = comp["name"]
+            if "rt_price" in comp.columns:
+                disp["即時股價"] = comp["rt_price"].apply(
+                    lambda x: _fmt(x) if pd.notna(x) else "N/A"
+                )
+            if "shares" in comp.columns:
+                disp["持有股數"] = comp["shares"].apply(
+                    lambda x: f"{int(x):,}" if pd.notna(x) else "N/A"
+                )
+            if "contrib" in comp.columns:
+                disp["貢獻市值(元)"] = comp["contrib"].apply(
+                    lambda x: f"{x:,.0f}" if pd.notna(x) else "N/A"
+                )
+            if "weight" in comp.columns:
+                disp["佔比(%)"] = comp["weight"].apply(
+                    lambda x: f"{x:.2f}" if pd.notna(x) else "N/A"
+                )
+            if "price_note" in comp.columns:
+                disp["備注"] = comp["price_note"]
+
+            st.dataframe(pd.DataFrame(disp), use_container_width=True, hide_index=True)
+
+    st.caption(f"最後更新：{r['ts']}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Main layout
+# ─────────────────────────────────────────────────────────────────────────────
+
+st.title("📊 台股 ETF 即時估計淨值")
+st.caption(
+    "資料來源：台灣證券交易所（TWSE）"
+    "　｜　計算公式：Σ（成分股即時股價 × 持有股數）÷ 流通在外單位數"
+)
+st.markdown("---")
+
+with st.form("query_form"):
+    col_input, col_btn = st.columns([4, 1])
+    with col_input:
+        etf_input = st.text_input(
+            "etf_codes",
+            value=st.session_state.get("etf_input", "0050"),
+            placeholder="輸入 ETF 代號，多檔以逗號分隔，例：0050, 00878, 006208",
+            label_visibility="collapsed",
+        )
+    with col_btn:
+        submitted = st.form_submit_button("查 詢", use_container_width=True, type="primary")
+
+auto_refresh = st.checkbox("每 30 秒自動更新", value=False)
+
+# ── Handle manual submit ────────────────────────────────────────────────────
+if submitted:
+    raw = etf_input.replace("，", ",")
+    codes = [c.strip() for c in re.split(r"[,\s]+", raw) if c.strip()]
+    if not codes:
+        st.warning("請輸入至少一個 ETF 代號")
+    else:
+        st.session_state["etf_codes"] = codes
+        st.session_state["etf_input"] = etf_input
+        fetch_etf_components.clear()  # Force fresh component data on manual query
+        with st.spinner(f"正在抓取 {', '.join(codes)} 的資料…"):
+            st.session_state["results"] = [compute_iopv(c) for c in codes]
+
+# ── Display stored results ──────────────────────────────────────────────────
+if "results" in st.session_state:
+    for res in st.session_state["results"]:
+        render_result(res)
+        st.markdown("---")
+
+# ── Auto-refresh countdown (runs after results are displayed) ───────────────
+if auto_refresh and "etf_codes" in st.session_state:
+    ph = st.empty()
+    for remaining in range(30, 0, -1):
+        ph.info(f"⏱ 下次自動更新：{remaining} 秒後（取消勾選可停止）")
+        time.sleep(1)
+    ph.empty()
+
+    codes = st.session_state["etf_codes"]
+    with st.spinner("正在更新資料…"):
+        st.session_state["results"] = [compute_iopv(c) for c in codes]
+
+    st.rerun()  # Re-render UI with fresh results; countdown restarts if still checked
