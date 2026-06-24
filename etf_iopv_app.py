@@ -39,9 +39,6 @@ _TWSE_HEADERS = {
 }
 _MIS_HEADERS = {**_TWSE_HEADERS, "Referer": "https://mis.twse.com.tw/"}
 
-# Reuse TCP connections across API calls
-_http = requests.Session()
-_http.headers.update(_UA)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
