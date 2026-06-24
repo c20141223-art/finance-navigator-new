@@ -66,6 +66,11 @@ def fetch_etf_components(
         timeout=15,
     )
     resp.raise_for_status()
+    if not resp.text.strip():
+        raise ValueError(
+            "TWSE ETFund API 回傳空白（伺服器 IP 可能被封鎖）。"
+            "成分股資料需從台灣本地 IP 取得，建議改在本機執行。"
+        )
     js = resp.json()
 
     if js.get("stat") != "OK":
@@ -116,26 +121,46 @@ def fetch_etf_components(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# API — Real-time Stock Prices (MIS)
+# API — Real-time Stock Prices
+# Primary: TWSE MIS  |  Fallback: Yahoo Finance (works globally)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _fetch_price_yahoo(code: str) -> Optional[dict]:
+    """
+    Fetch single stock price from Yahoo Finance chart API.
+    Taiwan TSE stocks use suffix .TW, OTC stocks use .TWO
+    """
+    for suffix in [".TW", ".TWO"]:
+        try:
+            resp = requests.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{code}{suffix}",
+                headers={"User-Agent": _UA},
+                timeout=8,
+            )
+            if resp.status_code != 200 or not resp.text.strip():
+                continue
+            meta = resp.json()["chart"]["result"][0]["meta"]
+            price = meta.get("regularMarketPrice") or meta.get("previousClose")
+            name = meta.get("shortName") or meta.get("longName") or code
+            if price:
+                return {"price": round(float(price), 2), "name": name, "is_prev_close": False}
+        except Exception:
+            continue
+    return None
+
 
 def fetch_prices(codes: list[str]) -> dict[str, dict]:
     """
-    Fetch real-time prices from TWSE MIS API.
-    Queries TSE + OTC simultaneously; MIS returns data only for matching codes.
+    Fetch real-time prices. Tries TWSE MIS first; falls back to Yahoo Finance
+    for any codes that fail or return empty responses.
 
-    MIS response fields used:
-      c  = stock code
-      n  = short Chinese name
-      z  = last trade price (最近成交價); "-" when no trades yet
-      y  = previous close (前日收盤價); used as fallback
-
-    Returns {code: {price, name, is_prev_close}}.
+    MIS fields: c=code, n=name, z=last trade, y=previous close
     """
     if not codes:
         return {}
 
     result: dict[str, dict] = {}
+    twse_blocked = False
 
     for i in range(0, len(codes), 100):
         chunk = codes[i : i + 100]
@@ -151,6 +176,10 @@ def fetch_prices(codes: list[str]) -> dict[str, dict]:
             )
             resp.raise_for_status()
 
+            if not resp.text.strip():
+                twse_blocked = True
+                break
+
             for item in resp.json().get("msgArray", []):
                 code = item.get("c", "").strip()
                 if not code or code in result:
@@ -162,25 +191,28 @@ def fetch_prices(codes: list[str]) -> dict[str, dict]:
 
                 if z not in ("-", "", None):
                     try:
-                        result[code] = {
-                            "price": float(z),
-                            "name": name,
-                            "is_prev_close": False,
-                        }
+                        result[code] = {"price": float(z), "name": name, "is_prev_close": False}
                     except ValueError:
                         pass
                 elif y not in ("-", "", None):
                     try:
-                        result[code] = {
-                            "price": float(y),
-                            "name": name,
-                            "is_prev_close": True,
-                        }
+                        result[code] = {"price": float(y), "name": name, "is_prev_close": True}
                     except ValueError:
                         pass
 
-        except Exception as exc:
-            st.warning(f"行情批次 {i // 100 + 1} 取得失敗：{exc}")
+        except Exception:
+            twse_blocked = True
+            break
+
+    # Fallback: Yahoo Finance for any missing codes
+    missing = [c for c in codes if c not in result]
+    if missing:
+        if twse_blocked:
+            st.info("⚠️ TWSE 行情 API 無法連線，改用 Yahoo Finance 備援資料（價格可能延遲 15 分鐘）")
+        for code in missing:
+            data = _fetch_price_yahoo(code)
+            if data:
+                result[code] = data
 
     return result
 
