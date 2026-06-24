@@ -1,4 +1,4 @@
-app = "taiwan-etf-iopv"
+app = "finance-navigator-new"
 primary_region = "nrt"
 
 [build]
