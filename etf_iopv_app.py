@@ -1,8 +1,9 @@
 """
 台股 ETF 即時估計淨值計算工具 (IOPV Calculator)
-Data sources: Taiwan Stock Exchange (TWSE) APIs
+Data sources: TWSE APIs, Fugle Market Data API, Yahoo Finance
 """
 
+import os
 import re
 import time
 from datetime import datetime
@@ -11,6 +12,8 @@ from typing import Optional
 import pandas as pd
 import requests
 import streamlit as st
+
+_FUGLE_KEY = os.environ.get("FUGLE_API_KEY", "")
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Page config
@@ -83,6 +86,79 @@ def _parse_twse_response(js: dict, etf_code: str) -> tuple[pd.DataFrame, Optiona
             break
 
     return df, units, title
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _fetch_etf_prev_nav(etf_code: str) -> Optional[float]:
+    """
+    Try TWSE Open API for ETF's previous official NAV.
+    openapi.twse.com.tw may have different geo-blocking than www.twse.com.tw.
+    Returns NAV float or None.
+    """
+    try:
+        resp = requests.get(
+            "https://openapi.twse.com.tw/v1/ETF/GetUnitValue",
+            headers={"User-Agent": _UA, "Accept": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code != 200 or not resp.text.strip():
+            return None
+        data = resp.json()
+        for item in data:
+            sym = item.get("Symbol", "") or item.get("stockNo", "") or item.get("code", "")
+            if str(sym).strip() == etf_code.strip():
+                for key in ("UnitValue", "unitValue", "nav", "NAV", "netAssetValue"):
+                    val = item.get(key)
+                    if val:
+                        try:
+                            return float(str(val).replace(",", ""))
+                        except ValueError:
+                            pass
+    except Exception:
+        pass
+    return None
+
+
+def _fetch_components_twse_open(etf_code: str) -> Optional[tuple[pd.DataFrame, Optional[float], str]]:
+    """
+    Try TWSE Open API (openapi.twse.com.tw) for ETF component data.
+    This endpoint may not be geo-blocked unlike www.twse.com.tw.
+    """
+    try:
+        resp = requests.get(
+            "https://openapi.twse.com.tw/v1/ETF/GetShares",
+            params={"stockNo": etf_code},
+            headers={"User-Agent": _UA, "Accept": "application/json"},
+            timeout=10,
+        )
+        if resp.status_code != 200 or not resp.text.strip():
+            return None
+        data = resp.json()
+        if not data:
+            return None
+        rows = []
+        for item in data:
+            code = item.get("StockCode") or item.get("stockCode") or item.get("code", "")
+            name = item.get("StockName") or item.get("stockName") or item.get("name", code)
+            shares_raw = item.get("Shares") or item.get("shares") or item.get("heldShares", "")
+            weight_raw = item.get("Ratio") or item.get("ratio") or item.get("weight", "")
+            if code:
+                row = {"code": str(code).strip(), "name": str(name).strip()}
+                try:
+                    row["shares"] = float(str(shares_raw).replace(",", ""))
+                except (ValueError, TypeError):
+                    pass
+                try:
+                    row["weight"] = float(str(weight_raw).replace(",", "").replace("%", ""))
+                except (ValueError, TypeError):
+                    pass
+                rows.append(row)
+        if not rows:
+            return None
+        df = pd.DataFrame(rows)
+        return df, None, etf_code
+    except Exception:
+        return None
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
@@ -185,6 +261,14 @@ def fetch_etf_components(
     """
     errors: list[str] = []
 
+    # Try TWSE Open API first (less geo-restricted)
+    open_result = _fetch_components_twse_open(etf_code)
+    if open_result is not None:
+        df, units, title = open_result
+        if "shares" in df.columns:
+            return df, units, title or etf_code
+        errors.append("TWSE Open API: 無持股數資料")
+
     for url in [
         "https://www.twse.com.tw/fund/ETFund",
         "https://www.twse.com.tw/rwd/zh/fund/ETFund",
@@ -231,6 +315,34 @@ def fetch_etf_components(
 # API — Real-time Stock Prices
 # Primary: TWSE MIS  |  Fallback: Yahoo Finance (works globally)
 # ─────────────────────────────────────────────────────────────────────────────
+
+def _fetch_price_fugle(code: str) -> Optional[dict]:
+    """Fetch real-time price from Fugle Market Data API (requires API key)."""
+    if not _FUGLE_KEY:
+        return None
+    try:
+        resp = requests.get(
+            f"https://api.fugle.tw/marketdata/v1.0/stock/intraday/quote/{code}",
+            headers={"X-API-KEY": _FUGLE_KEY, "Accept": "application/json"},
+            timeout=8,
+        )
+        if resp.status_code != 200 or not resp.text.strip():
+            return None
+        d = resp.json()
+        price = d.get("closePrice") or d.get("lastPrice") or d.get("lastTrade", {}).get("price")
+        prev = d.get("previousClose") or d.get("referencePrice")
+        name = d.get("name", code)
+        if price:
+            return {
+                "price": float(price),
+                "name": name,
+                "prev_close": float(prev) if prev else None,
+                "is_prev_close": False,
+            }
+    except Exception:
+        pass
+    return None
+
 
 def _fetch_price_yahoo(code: str) -> Optional[dict]:
     """
@@ -315,13 +427,13 @@ def fetch_prices(codes: list[str]) -> dict[str, dict]:
             twse_blocked = True
             break
 
-    # Fallback: Yahoo Finance for any missing codes
+    # Fallback: Fugle then Yahoo Finance for any missing codes
     missing = [c for c in codes if c not in result]
     if missing:
         if twse_blocked:
-            st.info("⚠️ TWSE 行情 API 無法連線，改用 Yahoo Finance 備援資料（價格可能延遲 15 分鐘）")
+            st.info("⚠️ TWSE 行情 API 無法連線，改用 Fugle/Yahoo Finance 備援資料")
         for code in missing:
-            data = _fetch_price_yahoo(code)
+            data = _fetch_price_fugle(code) or _fetch_price_yahoo(code)
             if data:
                 result[code] = data
 
@@ -415,7 +527,8 @@ def compute_iopv(etf_code: str) -> dict:
 
         # Approximate IOPV when only weights are available (Yahoo Finance fallback)
         if r["iopv"] is None and r["yahoo_fallback"] and "weight" in comp.columns:
-            etf_prev = prices.get(etf_code, {}).get("prev_close")
+            # Prefer official NAV from TWSE Open API over market close
+            etf_prev = _fetch_etf_prev_nav(etf_code) or prices.get(etf_code, {}).get("prev_close")
             if etf_prev and etf_prev > 0:
                 weighted_return = 0.0
                 for _, row in comp.iterrows():
