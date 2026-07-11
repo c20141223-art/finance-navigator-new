@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# SQLite 資料庫本體不進 repo（Phase 4 決定用 commit 或 GitHub Actions cache
+# 持久化，見規格書 1.1）；schema 與 fetch 程式碼才是版本控管的對象。
+data/market.db
+data/market.db-wal
+data/market.db-shm
+
+.venv/
+venv/

@@ -1,0 +1,66 @@
+# 資料源設定 — 台股選股工具 Phase 1
+#
+# !!! 重要：本檔案內所有 URL 目前尚未在真實網路環境驗證 !!!
+# 開發此檔案時，執行環境（sandbox）的對外網路白名單不含 twse.com.tw /
+# tpex.org.tw / mopsov.twse.com.tw 等網域，因此無法依規格書 9 節的要求
+# 「先實際請求驗證格式」。這些 URL 是依據這些政府公開資料 API 目前已知、
+# 長期穩定的公開格式填入，仍必須在有網路的環境（GitHub Actions 或本機）
+# 執行一次 `python scripts/verify_api_samples.py`，將真實回應存入
+# docs/api_samples/，並確認 fetchers/*.py 內的欄位對應無誤後，才能視為
+# 已驗證。驗證前請勿假設本檔案內容正確。
+
+http:
+  timeout_seconds: 20
+  # 同一 host 兩次請求間至少間隔幾秒（笨但穩的 rate limit 保護）
+  min_interval_seconds: 1.5
+  max_retries: 3
+  retry_backoff_seconds: 3
+
+data:
+  # 初始化回補至少 90 個交易日歷史（供 60MA / 回檔幅度計算）
+  min_backfill_trading_days: 90
+  # daily_price 連續抓不到資料達此天數，標記 stock_meta.is_active = 0
+  inactive_after_missing_days: 5
+
+sources:
+  # 上市（TWSE）全市場「最新一個交易日」收盤行情，整批 JSON，不支援指定日期
+  # → 每日增量更新用這支即可（17:30 觸發時當天資料已是最新）
+  twse_daily_all: "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
+
+  # 上市全市場「指定日期」收盤行情（回補歷史用，需逐日呼叫）
+  # date 參數格式 YYYYMMDD（西元）
+  twse_daily_history: "https://www.twse.com.tw/exchangeReport/MI_INDEX?date={date}&type=ALLBUT0999"
+
+  # 上櫃（TPEx）全市場日收盤行情，整批 JSON（TPEx openapi 慣例路徑，僅最新日）
+  tpex_daily_all: "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
+
+  # 上櫃全市場「指定日期」收盤行情（回補歷史用）。d 參數為民國年/月/日
+  tpex_daily_history: "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&se=EW"
+
+  # 上市三大法人買賣超日報（整批，需帶 date 參數，西元 YYYYMMDD）
+  twse_institutional: "https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALL&response=json"
+
+  # 上櫃三大法人買賣超日報（整批 JSON，僅最新日；歷史需改用日期版端點，
+  # 待驗證後補上）
+  tpex_institutional: "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trade"
+
+  # 月營收彙總表（MOPS），{roc_year} 為民國年，{month} 為兩位數月份
+  # sii = 上市, otc = 上櫃
+  mops_monthly_revenue_sii: "https://mops.twse.com.tw/nas/t21/sii/t21sc03_{roc_year}_{month}_0.html"
+  mops_monthly_revenue_otc: "https://mops.twse.com.tw/nas/t21/otc/t21sc03_{roc_year}_{month}_0.html"
+
+  # 上市處置股 / 注意股公告
+  twse_disposition: "https://www.twse.com.tw/rwd/zh/announcement/punish"
+  twse_attention: "https://www.twse.com.tw/rwd/zh/announcement/notice"
+
+  # 上櫃（TPEx）處置股 / 注意股公告
+  tpex_disposition: "https://www.tpex.org.tw/web/bulletin/disposal_information/disposal_information_print.php"
+
+  # 全市場證券基本資料（含上市/上櫃別、產業別），ISIN 公告網站
+  # strMode=2 上市, strMode=4 上櫃
+  isin_listed: "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2"
+  isin_otc: "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4"
+
+  # 除權除息參考價（用於還原股價回推調整係數）
+  twse_ex_rights: "https://www.twse.com.tw/rwd/zh/exRight/TWT49U"
+  tpex_ex_rights: "https://www.tpex.org.tw/web/stock/exright/preAnnounce/exRightPreAnnounce_print.php"
