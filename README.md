@@ -4,29 +4,38 @@
 
 每日自動執行的台股選股系統，Phase 1（資料層）目前狀態如下。
 
-### ⚠️ 已知限制：API 尚未在真實網路環境驗證
+### ⚠️ 已知限制：第一輪真實驗證完成，Phase 1 尚未定稿
 
-此專案的資料層是在對外網路白名單環境（不含 twse.com.tw / tpex.org.tw /
-mops.twse.com.tw）中開發的，因此 `config/sources.yaml` 內的所有端點 URL
-與 `stock_screener/fetchers/*.py` 內的欄位對應目前是依據這些公開 API
-過去已知、穩定的慣例格式填入，**尚未經過規格書要求的真實請求驗證**，
-風險最高的兩處是：
+2026-07-11 透過 `.github/workflows/verify-api-samples.yml`（在 `main` 上，
+`workflow_dispatch` 手動觸發，執行內容針對這個 feature branch）跑過一次
+`scripts/verify_api_samples.py`，對 11 個資料源都打了真實請求。結果：
 
-1. `stock_screener/fetchers/tpex.py` 的 `_AADATA_COLUMNS`（TPEx 舊式日期
-   查詢端點回傳無欄位名稱的陣列，欄位順序純靠位置對應）
-2. `config/sources.yaml` 內的 `twse_disposition` / `tpex_disposition`
-   （處置股/注意股公告端點）
+- **已確認並修正**：`tpex_daily_all`、`tpex_daily_history`（TPEx 官網
+  2024-10-27 改版後回應格式整個變了，原本假設的舊式 `aaData` 格式是錯的，
+  已重寫成真正的 `tables` 格式）。
+- **端點可用但當次沒驗到欄位內容**：`twse_institutional`（T86）——網址
+  和回應外層格式正確，但查詢日剛好沒有資料。
+- **仍然打不通**：`twse_daily_all` / `isin_listed` / `isin_otc` /
+  `mops_monthly_revenue_*` 被 TWSE 網站的機器人防護規則擋下（回攔截頁）；
+  `twse_daily_history` / `twse_disposition` / `twse_ex_rights` 回
+  HTTP 307；`tpex_institutional` 端點名稱錯誤（回首頁樣板）；
+  `tpex_disposition` 舊網址 404，已換新網址但未驗證。
 
-**在正式啟用排程之前，必須先在有網路的環境執行一次：**
+完整逐項結果、已知原因、下一輪待辦，見 `docs/api_samples/README.md`。
+**在這些項目全部確認之前，不能視為 Phase 1 定稿**——尤其是 TWSE 網站的
+機器人防護規則會不會持續擋掉正式排程的請求，是需要另外討論對策的風險，
+不是單純改程式碼就能解決的問題。
+
+再次驗證：
 
 ```bash
 pip install -r requirements-stock-screener.txt
 python scripts/verify_api_samples.py
 ```
 
-並依 `docs/api_samples/README.md` 的步驟核對真實回應欄位與 `parse_*`
-函式是否相符。所有 parser 在欄位對不上時會拋出 `SchemaMismatchError`
-並清楚列出缺少哪些欄位，而不會靜默產生錯誤資料。
+或直接在 GitHub 手動觸發 `Verify API samples` workflow。所有 parser 在
+欄位對不上時會拋出 `SchemaMismatchError` 並清楚列出缺少哪些欄位，不會
+靜默產生錯誤資料。
 
 ### 目錄結構
 

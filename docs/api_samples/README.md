@@ -1,42 +1,54 @@
 # API 樣本狀態
 
-**目前狀態：尚未驗證。** 這個目錄應該存放 `scripts/verify_api_samples.py`
-實際打過的每個資料源的原始回應，但此專案的資料層是在一個對外網路白名單
-（不含 twse.com.tw / tpex.org.tw / mops.twse.com.tw）的沙箱環境中開發的，
-無法在該環境內完成規格書第 9 節要求的「每個 API 端點在實作前先實際請求
-驗證格式」。
+**第一輪真實驗證已完成（2026-07-11，透過 GitHub Actions `Verify API
+samples` workflow）。** 結果好壞參半：三個來源的欄位格式已確認並修正了
+程式碼中原本猜錯的部分，五個來源目前打不通（原因分兩類，見下方），需要
+再一輪才能全部確認。**Phase 1 尚未定稿。**
 
-## 待辦（Phase 1 驗收前必做）
+## 逐項結果
 
-在有實際對外網路的環境（GitHub Actions runner 或本機）執行：
+| 來源 | 狀態 | 說明 |
+|---|---|---|
+| `tpex_daily_all` | ✅ 已確認並修正 | 真實欄位是 `SecuritiesCompanyCode`/`CompanyName`/`TradingShares` 等，跟原本假設的 `Code`/`Name`/`TradingVolume` 不同。`stock_screener/fetchers/tpex.py` 已依樣本修正，10,093 筆資料完整解析成功。 |
+| `tpex_daily_history` | ⚠️ 部分確認 | 回應格式跟原本假設的舊式 `{"aaData": [[...]]}` **完全不同**——TPEx 官網已改版（2024-10-27），現在回傳 `{"tables": [{"fields": [...], "data": [...]}], "stat": "ok"}`，欄位有名稱可用關鍵字比對（跟 TWSE 的作法一致）。已依此重寫 parser。但當次查詢日 `data` 為空陣列，只確認了欄位「名稱」，尚未確認實際數值 parsing 邏輯（型別、千分位逗號等）。 |
+| `twse_institutional`（T86） | ⚠️ 部分確認 | 端點網址與 JSON envelope（`{"stat": ..., "fields": [...], "data": [...]}`）正常運作，**沒有被擋**。但查詢日剛好回「沒有符合條件的資料」，所以三大法人買賣超的實際欄位名稱和數值仍未見過真實範例。 |
+| `twse_daily_all` | ❌ 被擋 | `openapi.twse.com.tw` 回傳「因為安全性考量，您所執行的頁面無法呈現」的攔截頁，判斷是該站的機器人防護規則擋下 GitHub Actions runner 的來源 IP。 |
+| `isin_listed` / `isin_otc` | ❌ 被擋 | 同上，`isin.twse.com.tw` 也是同一種攔截頁。 |
+| `mops_monthly_revenue_sii` / `_otc` | ❌ 被擋 | 同上，`mops.twse.com.tw` 也是。 |
+| `twse_daily_history` / `twse_disposition` / `twse_ex_rights` | ❌ HTTP 307 | 同樣在 `www.twse.com.tw` 底下，但跟 T86 不同的攔截方式（307 轉址而非明顯的攔截頁）。同一網域下不同路徑的機器人防護規則顯然不一致。 |
+| `tpex_institutional` | ❌ 網址錯誤 | 回應是 TPEx 官網首頁樣板（非 JSON），代表 `tpex_3insti_daily_trade` 這個 openapi 端點名稱本身就是錯的或已改名，不是網路問題。 |
+| `tpex_disposition` | ❌ 404 | 舊網址在 TPEx 2024-10-27 改版後已下架。已依網路搜尋結果換成新版網址 `disposal_information.php`（未帶 `_print`），**下一輪需要驗證**。 |
 
-```bash
-pip install -r requirements.txt
-python scripts/verify_api_samples.py
-```
+## 已修正的程式碼
 
-這會把以下每個來源的真實回應存成檔案：
+- `stock_screener/fetchers/tpex.py`：`parse_daily_all`、`parse_daily_history`
+  已依真實樣本重寫。
+- `config/sources.yaml`：`tpex_disposition` 改成新版網址（未驗證）。
+- `scripts/verify_api_samples.py`：改用「往前推幾個交易日」而非「今天」
+  作為 date 參數的探測日期，避免撞到當天報告還沒發布或忘記排除國定假日
+  的情況；同時新增抓取 TWSE／TPEx 官方 Swagger 目錄
+  （`_twse_openapi_swagger` / `_tpex_openapi_swagger`），下一輪執行後
+  可直接查表找到 `tpex_institutional` 的正確端點名稱，不用再用搜尋引擎
+  猜。
 
-- `twse_daily_all.json` / `twse_daily_history.json`
-- `tpex_daily_all.json` / `tpex_daily_history.json`
-- `twse_institutional.json`
-- `tpex_institutional.json`
-- `twse_ex_rights.json`
-- `twse_disposition.json`
-- `tpex_disposition.html`（或 `.json`，視實際回應而定）
-- `isin_listed.html` / `isin_otc.html`
-- `mops_monthly_revenue_sii.html` / `mops_monthly_revenue_otc.html`
+## 下一輪待辦
 
-之後請對照 `stock_screener/fetchers/*.py` 內各 `parse_*` 函式預期的欄位名
-稱，確認是否相符。已知風險最高、最可能對不上的兩個地方：
+再次手動觸發 `Verify API samples` workflow 後：
 
-1. **`stock_screener/fetchers/tpex.py` 的 `_AADATA_COLUMNS`** — TPEx 舊式
-   日期查詢端點慣例回傳 `{"aaData": [[...]]}`，欄位「沒有」名稱、純靠
-   位置對應，目前的欄位順序是憑印象猜測，務必用真實樣本核對。
-2. **`config/sources.yaml` 裡的 `twse_disposition` / `tpex_disposition`**
-   — 處置股/注意股公告端點的路徑與回應格式不確定性最高。
+1. **`tpex_institutional`**：讀 `_tpex_openapi_swagger.json`，找三大法人
+   買賣超相關的端點路徑，更新 `config/sources.yaml`。
+2. **`tpex_disposition`**：確認新網址 `disposal_information.php` 回傳的
+   HTML 表格結構是否跟 `risk_list.parse_tpex_disposition` 的假設相符。
+3. **`twse_institutional`**：確認新的探測日期是否抓到有資料的回應，核對
+   `parse_institutional` 假設的欄位名稱（`外資買賣超股數`／`投信買賣超
+   股數`／`自營商買賣超股數`）是否正確。
+4. **twse.com.tw 系網域被擋**（`twse_daily_all`／`isin_*`／
+   `mops_monthly_revenue_*`／`twse_daily_history`／`twse_disposition`／
+   `twse_ex_rights`）：這是機器人防護規則層級的問題，不是單純的程式
+   bug，兩輪都被擋的話就要跟使用者討論對策（例如：改變請求節奏、確認
+   header、改用其他來源、或接受間歇性失敗並依賴 `fetch_log` 追蹤重試），
+   不能靠程式碼修正就假裝解決。
 
-所有 parser 在欄位對不上時會拋出 `SchemaMismatchError` 並清楚列出缺少
-哪些欄位、實際收到哪些欄位，而不會靜默產生錯誤資料——但這只能抓到「明顯
-對不上」的情況，抓不到「欄位存在但語意不同」這種更隱微的錯誤，所以人工
-核對這一步不能省。
+在以上都確認之前，**這些來源在正式每日排程中很可能持續失敗**——好在
+pipeline 的容錯設計（`fetch_log` 記錄 + 單一來源失敗不影響其他來源）
+已經在跑，缺料會被明確記錄而不是靜默發生。

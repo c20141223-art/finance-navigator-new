@@ -1,13 +1,29 @@
 # 資料源設定 — 台股選股工具 Phase 1
 #
-# !!! 重要：本檔案內所有 URL 目前尚未在真實網路環境驗證 !!!
-# 開發此檔案時，執行環境（sandbox）的對外網路白名單不含 twse.com.tw /
-# tpex.org.tw / mopsov.twse.com.tw 等網域，因此無法依規格書 9 節的要求
-# 「先實際請求驗證格式」。這些 URL 是依據這些政府公開資料 API 目前已知、
-# 長期穩定的公開格式填入，仍必須在有網路的環境（GitHub Actions 或本機）
-# 執行一次 `python scripts/verify_api_samples.py`，將真實回應存入
-# docs/api_samples/，並確認 fetchers/*.py 內的欄位對應無誤後，才能視為
-# 已驗證。驗證前請勿假設本檔案內容正確。
+# 驗證狀態（2026-07-11 第一輪 GitHub Actions 執行結果，詳見
+# docs/api_samples/README.md 完整記錄）：
+#
+#   已確認可用：twse_institutional（T86，格式正確，當次查詢日剛好無資料）、
+#               tpex_daily_all（欄位已依真實樣本修正）、
+#               tpex_daily_history（格式已依真實樣本改寫，但當次回應
+#               data 為空陣列，欄位名稱已確認、實際數值尚未核對）
+#   仍未驗證／已知有問題：
+#     - twse_daily_all / isin_listed / isin_otc / mops_monthly_revenue_*
+#       這幾個 twse.com.tw 系網域被 WAF 擋下（回應「因為安全性考量」的
+#       攔截頁），研判是 GitHub Actions runner 的來源 IP 被該站的機器人
+#       防護規則擋下，不是程式邏輯問題。
+#     - twse_daily_history / twse_disposition / twse_ex_rights 收到
+#       HTTP 307（同一批 www.twse.com.tw 底下，T86 沒被擋，其他路徑被擋，
+#       研判是該站對特定路徑的機器人防護規則不同）。
+#     - tpex_institutional 端點路徑錯誤（回應是 TPEx 首頁樣板，不是
+#       JSON），實際正確的 openapi 端點名稱尚未找到。
+#     - tpex_disposition 原路徑回 404（TPEx 官網已於 2024-10-27 改版），
+#       已依網路搜尋結果更新為新版路徑，但尚未經真實請求驗證。
+#
+# 下一輪驗證需要：(a) 對 twse.com.tw 系網域的請求方式做調整（例如降低併發
+# 密集度、確認 header）並觀察是否仍被擋，(b) 找到 tpex_institutional 正確
+# 端點名稱，(c) 確認 tpex_disposition 新路徑格式。在此之前，這些來源在
+# pipeline 執行時會被記錄為 fetch_log 失敗，不會讓其他來源跟著失敗。
 
 http:
   timeout_seconds: 20
@@ -54,7 +70,10 @@ sources:
   twse_attention: "https://www.twse.com.tw/rwd/zh/announcement/notice"
 
   # 上櫃（TPEx）處置股 / 注意股公告
-  tpex_disposition: "https://www.tpex.org.tw/web/bulletin/disposal_information/disposal_information_print.php"
+  # 舊路徑 disposal_information_print.php 在 2026-07-11 驗證時回 404
+  # （TPEx 官網已於 2024-10-27 改版）。此為依網路搜尋結果更新的新版路徑，
+  # 尚未經真實請求驗證，下一輪 verify_api_samples.py 需確認。
+  tpex_disposition: "https://www.tpex.org.tw/web/bulletin/disposal_information/disposal_information.php?l=zh-tw"
 
   # 全市場證券基本資料（含上市/上櫃別、產業別），ISIN 公告網站
   # strMode=2 上市, strMode=4 上櫃

@@ -27,7 +27,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from stock_screener.config import load_config
-from stock_screener.dateutil_tw import to_roc_date, to_roc_year_month, to_yyyymmdd
+from stock_screener.dateutil_tw import (
+    to_roc_date,
+    to_roc_year_month,
+    to_yyyymmdd,
+    trading_day_candidates,
+)
 from stock_screener.http_client import RateLimitedClient
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "docs" / "api_samples"
@@ -53,10 +58,20 @@ def main() -> None:
     client = RateLimitedClient(config.http)
 
     today = dt.date.today()
-    # pick a recent weekday as a plausible trading day for date-parameterized endpoints
-    probe_date = today
-    while probe_date.weekday() >= 5:
-        probe_date -= dt.timedelta(days=1)
+    # Use a date a few trading days back, not "today" — this avoids the
+    # false negative where "today" is a real trading day but the report
+    # hasn't been published yet at whatever time this workflow happens to
+    # run, and avoids unaccounted-for public holidays (trading_day_candidates
+    # only skips weekends, not holidays). 3 trading days back is a cheap way
+    # to sidestep both without a real trading-calendar lookup.
+    probe_date = trading_day_candidates(today, 4)[0]
+
+    # Swagger/OpenAPI catalogs — captured so the *authoritative* endpoint
+    # names for institutional/disposition reports can be looked up directly
+    # instead of guessed, for the sources still marked UNVERIFIED in
+    # config/sources.yaml.
+    save("_twse_openapi_swagger", client.get("https://openapi.twse.com.tw/v1/swagger.json"))
+    save("_tpex_openapi_swagger", client.get("https://www.tpex.org.tw/openapi/swagger.json"))
 
     save("twse_daily_all", client.get(config.url("twse_daily_all")))
     save(
