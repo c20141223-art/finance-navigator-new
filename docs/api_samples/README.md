@@ -1,39 +1,65 @@
 # API 樣本狀態
 
-**兩輪真實驗證完成（2026-07-11 / 07-12，GitHub Actions `Verify API
-samples` workflow）。** 第二輪套用 stock-report 的 headers 配方後，TWSE
-系網域全數打通，所有核心資料源的欄位格式已用真實樣本核對並修正。
+**三輪真實驗證完成（2026-07-11 / 07-12 兩次，GitHub Actions `Verify API
+samples` workflow）。全部 13 個資料源都已用真實回應核對，Phase 1 資料層
+的來源格式驗證正式結案。**
 
-## 最終逐項狀態
+## 最終逐項狀態（全部 ✅）
 
-| 來源 | 狀態 | 驗證依據 |
+| 來源 | 驗證輪次 | 依據 |
 |---|---|---|
-| `twse_daily_all` | ✅ 樣本核對通過 | 1,369 筆真實資料完整解析 |
-| `twse_daily_history` | ✅ 樣本核對後修正 | 回應已改為 `tables` 包裝格式（跟 TPEx 改版後一致），parser 重寫；台積電 07/07 收盤 2440 等數值可對看盤軟體抽查 |
-| `twse_institutional`（T86） | ✅ 樣本核對後修正 | 外資欄位實名為「外陸資買賣超股數(不含外資自營商)」，關鍵字比對已修正；14,526 筆解析成功 |
-| `twse_ex_rights`（TWT49U） | ✅ 樣本核對後修正 | 回傳的是未來除權息「預告區間」，每列有自己的 資料日期——parser 改用每列日期當 ex_date |
-| `twse_disposition` | ✅ 樣本核對後修正 | 每列含 處置起迄時間 區間，parser 改為只納入查詢日落在區間內的股票 |
-| `tpex_daily_all` | ✅ 樣本核對通過 | 10,093 筆（第一輪已修正欄名） |
-| `tpex_daily_history` | ✅ 樣本核對通過 | 第二輪抓到 1,012 筆有資料的回應，數值層級確認 |
-| `isin_listed` / `isin_otc` | ✅ 樣本核對後修正 | 站方已改用 UTF-8（非舊 Big5）；表頭在資料列第 0 列需自行提升；上市 31,021 筆（含 ETF/權證）、台積電＝半導體業 ✓ |
-| `tpex_institutional` | ⚠️ schema 已確認、待真實樣本 | 第二輪證實舊猜測路徑錯誤（回首頁）；正確路徑 `/tpex_3insti_daily_trading` 取自官方 swagger（`_tpex_openapi_swagger.json`），parser 依 swagger 欄名實作（欄名有不規則空格，已做空格不敏感比對） |
-| `tpex_disposition` | ⚠️ schema 已確認、待真實樣本 | 舊 print 頁 404、新頁面 JS 渲染無表格；改用 swagger 中的 `/tpex_disposal_information` JSON 端點 |
-| `monthly_revenue_sii` / `_otc` | ⚠️ schema 已確認、待真實樣本 | 原 MOPS 靜態檔（nas/t21）404，該發布路徑已下架。改用兩交易所 openapi 的月營收彙總表（`/opendata/t187ap05_L`、`/mopsfin_t187ap05_O`），兩者中文欄名完全一致，且都在已驗證打通的網域上——不需要用到 data.gov.tw |
+| `twse_daily_all` | R2 | 1,369 筆真實資料完整解析 |
+| `twse_daily_history` | R2 | `tables` 包裝格式；2330 開高低收與看盤軟體一致（成交量口徑差異見下節） |
+| `twse_institutional` | R2 | 外陸資欄名修正後 14,526 筆解析成功 |
+| `twse_ex_rights` | R2 | 預告區間語意，每列自帶資料日期 |
+| `twse_disposition` | R2 | 處置起迄區間過濾 |
+| `tpex_daily_all` | R1 | 10,093 筆 |
+| `tpex_daily_history` | R2 | 1,012 筆數值層級確認 |
+| `isin_listed` / `isin_otc` | R2 | UTF-8 + 表頭提升修正後 31,021/10,249 筆 |
+| `tpex_institutional` | **R3** | 921 筆真實樣本；欄名（含不規則空格）與 swagger 一致；抽查列內部自洽：外資 -8,139,000 + 投信 0 + 自營商 +7,412,316 = TotalDifference -726,684 ✓ |
+| `tpex_disposition` | **R3** | 26 筆真實樣本；`DispositionPeriod` 實際格式為 7 碼民國年＋ASCII 波浪號（`1150710~1150723`），parser 已涵蓋並有對應測試 |
+| `monthly_revenue_sii` / `_otc` | **R3** | 942／810 筆真實樣本，資料年月 11506 全數解析成功 |
 
-## 破案紀錄：第一輪為什麼被擋
+## 成交量口徑鑑別（2330 2026-07-07 抽查案）
 
-第一輪的 UA 帶自我識別 URL（`+https://github.com/...`），TWSE 的機器人
-防護按此特徵攔截（攔截頁或無 Location 的 307——已用本機測試排除
-redirect-following 的嫌疑）。第二輪改用 stock-report 驗證過的瀏覽器型
-UA + Referer 配方後全數放行。此配方現為 `fetchers/*.py` 內建預設。
+**結論：parser 忠實，屬來源定義差異。**
 
-## 殘餘事項（不阻擋 Phase 1 定稿）
+- 原始樣本中 2330 該日成交股數原值即為 `31,400,854`（`twse_daily_history.json`
+  每日收盤行情表），parser 轉錄無誤；換算 31,401 張。
+- 看盤軟體顯示 27,777 張（盤中逐筆撮合量）。差 3,624 張（約 +13%），
+  來自 TWSE 官方日成交資料整批納入盤後定價、鉅額、零股等非盤中逐筆
+  撮合的成交（各項確切組成未逐項驗證，僅確認口徑屬性）。
+- **本系統全面採用 TWSE/TPEx 官方日成交資料口徑**，已註明於
+  `stock_screener/db.py` 的 `daily_price.volume` schema 註解。
 
-三個 ⚠️ 來源的端點路徑與欄位 schema 都取自交易所官方 swagger 目錄
-（非猜測），parser 依此實作並有單元測試，但尚未抓過真實回應。它們會在
-下一次 workflow 觸發或第一次正式排程執行時自動留下真實樣本
-（`verify_api_samples.py` 已納入這些端點），屆時若欄位有出入，
-`SchemaMismatchError` 會明確報錯並記錄於 `fetch_log`，不會靜默出錯。
+**對篩選因子的影響評估：**
 
-`_twse_openapi_swagger.json` / `_tpex_openapi_swagger.json` 為兩站完整
-API 目錄，日後找新資料源時先查這兩份，不要再猜端點。
+1. **排雷流動性濾網（近 5 日均量 > 500 張）**：官方口徑一致性地偏大，
+   邊際個股略更容易通過。門檻在 config 可調，且全市場同口徑比較，
+   不產生個股間的不公平。
+2. **T2 量能（5 日均量 ÷ 20 日均量）**：分子分母同口徑，系統性偏差
+   相除後大致抵銷。殘餘風險：**鉅額交易是單日脈衝**，一筆大額鉅額
+   可能造成假性放量訊號——這是已知雜訊源，留給 v1.5 因子歸因檢驗，
+   若證實干擾再評估改用排除鉅額的口徑。
+3. **反轉雷達 S1 帶量突破／打底量縮**：同第 2 點，比率型條件，
+   單日鉅額脈衝是主要殘餘風險，同樣交由歸因檢驗。
+4. **報酬回填（T+5/20/60、MFE、MAE）**：不使用成交量，無影響。
+
+## 月營收快照的排程注意事項（R3 發現）
+
+月營收端點回傳的是「已公布公司」的快照——07/11 樣本中 2330 缺席，因
+台積電尚未公布 6 月營收。**在規格書的 10–12 日窗口之後才公布的公司，
+該月資料會被錯過**（下月快照即滾動到新月份）。upsert 具冪等性，多跑
+無害（每次僅兩個請求），建議 Phase 4 排程時讓月營收更新跑整個 10–20
+日區間或干脆每日執行。詳見 `stock_screener/fetchers/mops.py` docstring。
+
+## 破案紀錄（保留供日後參考）
+
+- **R1 被擋原因**：UA 帶自我識別 URL（`+https://github.com/...`），
+  TWSE 機器人防護按此攔截。R2 改用 stock-report 驗證過的瀏覽器型
+  UA + Referer 配方後全數放行（redirect-following 已排除嫌疑）。
+- **格式時代考證**：TWSE MI_INDEX 與 TPEx 改版後都用 `tables` 包裝
+  格式；MOPS `nas/t21` 靜態檔已下架（404），月營收改用兩交易所
+  openapi 同一份報表；TPEx 處置股新頁面 JS 渲染，改用 openapi JSON。
+- `_twse_openapi_swagger.json` / `_tpex_openapi_swagger.json` 為兩站
+  完整 API 目錄，日後找新資料源先查這兩份，不要猜端點。

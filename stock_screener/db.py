@@ -29,6 +29,11 @@ CREATE TABLE IF NOT EXISTS daily_price (
     high        REAL,
     low         REAL,
     close       REAL    NOT NULL,
+    -- 成交量口徑：TWSE/TPEx 官方日成交資料（每日收盤行情報表），除以
+    -- 1000 換算成張（四捨五入）。此口徑比看盤軟體顯示的盤中撮合量大
+    -- （官方日資料整批納入盤後定價、鉅額、零股等非盤中逐筆撮合成交；
+    -- 實測 2330 2026-07-07：官方 31,401 張 vs 看盤軟體 27,777 張，差約
+    -- +13%）。全系統一致採官方口徑；影響評估見 docs/api_samples/README.md。
     volume      INTEGER,            -- 張 (1000 股)
     turnover    INTEGER,            -- 成交金額
     source      TEXT    NOT NULL,   -- 'twse' / 'tpex'

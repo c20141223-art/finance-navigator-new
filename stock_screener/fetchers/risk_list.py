@@ -6,7 +6,9 @@ JS (no <table> in raw HTML). TPEx's swagger catalog
 (docs/api_samples/_tpex_openapi_swagger.json) exposes the same report as
 proper JSON at /tpex_disposal_information with properties: Date,
 SecuritiesCompanyCode, CompanyName, DispositionPeriod, DispositionReasons,
-DisposalCondition. Schema-verified only — no live sample captured yet.
+DisposalCondition. Round-three live sample (26 rows) confirmed the schema;
+DispositionPeriod arrives as 7-digit ROC dates joined by an ASCII tilde
+(e.g. '1150710~1150723'), which parse_roc_date handles.
 """
 
 from __future__ import annotations

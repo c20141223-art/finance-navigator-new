@@ -12,8 +12,9 @@ docs/api_samples/):
   _tpex_openapi_swagger.json) is /tpex_3insti_daily_trading, and
   `parse_institutional` uses that schema's property names. The swagger
   spells several of them with erratic spaces (e.g. "Dealers -TotalSell"),
-  so keys are matched space-insensitively. No live sample captured yet —
-  schema-verified only.
+  so keys are matched space-insensitively. Round three confirmed against
+  a 921-row live sample, including internal consistency (foreign + trust
+  + dealer == TotalDifference on spot-checked rows).
 """
 
 from __future__ import annotations
@@ -82,7 +83,8 @@ def parse_daily_all(raw_text: str) -> list[dict]:
 
 
 def parse_daily_history(raw_text: str, date: dt.date) -> list[dict]:
-    """See module docstring: confirmed 'tables' shape, unconfirmed row values."""
+    """Post-revamp 'tables' wrapper; value-level parsing confirmed against
+    a 1,012-row live sample (round two)."""
     payload = json.loads(raw_text)
     tables = payload.get("tables")
     if not tables:

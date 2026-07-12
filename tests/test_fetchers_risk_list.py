@@ -32,3 +32,10 @@ def test_unparsable_period_over_flags():
 def test_missing_field_raises():
     with pytest.raises(SchemaMismatchError):
         risk_list.parse_tpex_disposition(json.dumps([{"foo": 1}]), dt.date(2026, 7, 7), "t")
+
+
+def test_real_sample_period_format_ascii_tilde_roc7():
+    rec = dict(_REC, DispositionPeriod="1150710~1150723")
+    assert risk_list.parse_tpex_disposition(json.dumps([rec]), dt.date(2026, 7, 9), "t") == []
+    rows = risk_list.parse_tpex_disposition(json.dumps([rec]), dt.date(2026, 7, 15), "t")
+    assert len(rows) == 1

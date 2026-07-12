@@ -16,8 +16,16 @@ Both return a flat JSON array with identical Chinese property names
 
 These endpoints serve the LATEST available month (no date parameter),
 which matches the spec's "篩選使用最新可得資料，並標注資料月份" — the
-per-row 資料年月 is what gets stored, not the fetch date. Schema-verified
-only; no live sample captured yet.
+per-row 資料年月 is what gets stored, not the fetch date. Round-three
+live samples confirmed (942 sii / 810 otc rows, all 資料年月=11506).
+
+Known scheduling caveat exposed by the live sample: the snapshot only
+contains companies that have PUBLISHED so far (2330 was absent on 07/11
+because TSMC hadn't reported June yet). A company reporting after the
+spec's 10th-12th run window would be missed for that month, since next
+month's snapshot rolls over to the new 資料年月. Upserts are idempotent,
+so running this fetch on more days (even daily — it's two cheap requests)
+closes the gap; the scheduling decision belongs to Phase 4 wiring.
 """
 
 from __future__ import annotations

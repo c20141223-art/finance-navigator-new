@@ -4,24 +4,24 @@
 
 每日自動執行的台股選股系統，Phase 1（資料層）目前狀態如下。
 
-### 驗證狀態：兩輪真實請求驗證完成（2026-07-11 / 07-12）
+### 驗證狀態：三輪真實請求驗證完成，Phase 1 資料層結案（2026-07-12）
 
 透過 `main` 上的 `Verify API samples` workflow（`workflow_dispatch`）從
-GitHub Actions 對所有資料源做真實請求，逐項核對回應格式並修正 parser。
-第二輪套用姊妹專案 stock-report 已驗證數月的 headers 配方後，TWSE 系
-網域全數打通。
+GitHub Actions 對所有 13 個資料源做真實請求，逐項核對回應格式並修正
+parser——全部通過，含使用者以看盤軟體抽查 2330 開高低收一致。
 
-- **9 個來源已用真實樣本（含資料列）核對通過**：日行情（上市/上櫃、
-  最新日/歷史日）、T86 三大法人、除權息預告、上市處置股、ISIN 基本資料。
-- **3 個來源已改用交易所官方 swagger 目錄記載的端點**（TPEx 三大法人、
-  TPEx 處置股、月營收彙總——原 MOPS 靜態檔路徑已下架 404，月營收改用
-  兩交易所 openapi 的同一份報表），schema 依 swagger 實作、有單元測試，
-  真實樣本會在下次 workflow 觸發或首次正式排程時自動補上；欄位若有出入
-  會以 `SchemaMismatchError` 明確報錯並記錄於 `fetch_log`，不會靜默
-  出錯。
+兩個重要口徑註記：
 
-逐項狀態表與破案紀錄（第一輪為何被擋、TWSE/TPEx 官網改版對格式的影響）
-見 `docs/api_samples/README.md`。重新驗證：手動觸發 workflow，或
+- **成交量口徑**：本系統採 TWSE/TPEx 官方日成交資料，比看盤軟體的
+  盤中撮合量大（官方整批納入盤後定價、鉅額、零股；2330 抽查差約
+  +13%）。全系統同口徑，對比率型量能因子影響大致抵銷；單日鉅額脈衝
+  為已知雜訊源，留待因子歸因檢驗。詳見 `docs/api_samples/README.md`。
+- **月營收快照**：openapi 端點只含已公布的公司，晚於 10–12 日窗口
+  公布者會漏接，Phase 4 排程時建議延長執行區間（upsert 冪等，多跑
+  無害）。
+
+逐項狀態表、成交量鑑別記錄、破案紀錄見 `docs/api_samples/README.md`。
+重新驗證：手動觸發 workflow，或
 
 ```bash
 pip install -r requirements-stock-screener.txt
@@ -49,9 +49,9 @@ scripts/
   run_monthly_revenue.py    每月 10-12 日執行的月營收更新
   verify_api_samples.py     在有網路的環境執行，抓取真實回應存入
                              docs/api_samples/
-docs/api_samples/          API 真實回應樣本（待補，見上方限制說明）
-tests/                      pytest 單元測試（35 tests，涵蓋 schema 驗證、
-                             還原股價計算、rate limiter、pipeline 容錯）
+docs/api_samples/          API 真實回應樣本與驗證記錄（三輪已完成）
+tests/                      pytest 單元測試（涵蓋 schema 驗證、還原股價
+                             計算、rate limiter、pipeline 容錯）
 ```
 
 ### 還原股價設計
