@@ -11,11 +11,19 @@ from stock_screener.config import SourcesConfig
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
 
+# isin.twse.com.tw has no proven header recipe either (see mops.py) —
+# same best-effort profile.
+REQ_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)",
+    "Accept": "text/html,application/xhtml+xml",
+    "Referer": "https://isin.twse.com.tw/",
+}
+
 
 def fetch_isin_raw(client: RateLimitedClient, config: SourcesConfig, market: str) -> RequestOutcome:
     """market: 'listed' (上市) or 'otc' (上櫃)."""
     url = config.url(f"isin_{market}")
-    return client.get(url)
+    return client.get(url, headers=REQ_HEADERS)
 
 
 def parse_isin(content: bytes, market_label: str, source: str) -> list[dict]:

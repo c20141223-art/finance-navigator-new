@@ -1,11 +1,22 @@
 """TWSE (上市) fetchers. See config/sources.yaml header for the
 verification caveat — endpoint URLs and field layouts here are best-effort
-until scripts/verify_api_samples.py has been run against a live network."""
+until scripts/verify_api_samples.py has been run against a live network.
+
+Header profile below is the one PROVEN to get through TWSE's bot
+protection from GitHub Actions runners: the sibling stock-report project
+(c20141223-art/stock-report) has hit openapi.twse.com.tw and
+www.twse.com.tw daily for months with exactly this UA + Referer shape,
+while our first verification round — identical endpoints, but a UA that
+carried a self-identifying "+https://github.com/..." URL and no Referer —
+got intercept pages and Location-less 307s. The `_` millisecond-timestamp
+query param on rwd endpoints is that project's cache-buster, kept as-is.
+"""
 
 from __future__ import annotations
 
 import datetime as dt
 import json
+import time
 
 from stock_screener.config import SourcesConfig
 from stock_screener.dateutil_tw import to_yyyymmdd
@@ -13,17 +24,33 @@ from stock_screener.fetchers.common import find_column, find_price_table, to_flo
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
 
+REQ_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)",
+    "Accept": "application/json",
+    "Referer": "https://www.twse.com.tw/",
+}
+
+NOCACHE_HEADERS = {
+    **REQ_HEADERS,
+    "Cache-Control": "no-cache, no-store",
+    "Pragma": "no-cache",
+}
+
+
+def _cache_bust() -> dict:
+    return {"_": int(time.time() * 1000)}
+
 
 def fetch_daily_all_raw(client: RateLimitedClient, config: SourcesConfig) -> RequestOutcome:
     """Latest trading day, full market. No date parameter."""
-    return client.get(config.url("twse_daily_all"))
+    return client.get(config.url("twse_daily_all"), headers=REQ_HEADERS)
 
 
 def fetch_daily_history_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:
     url = config.url("twse_daily_history").format(date=to_yyyymmdd(date))
-    return client.get(url)
+    return client.get(url, headers=NOCACHE_HEADERS, params=_cache_bust())
 
 
 def parse_daily_all(raw_text: str) -> list[dict]:
@@ -96,7 +123,7 @@ def fetch_institutional_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:
     url = config.url("twse_institutional").format(date=to_yyyymmdd(date))
-    return client.get(url)
+    return client.get(url, headers=NOCACHE_HEADERS, params=_cache_bust())
 
 
 def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:
@@ -140,7 +167,7 @@ def fetch_ex_rights_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:
     url = config.url("twse_ex_rights").format(date=to_yyyymmdd(date))
-    return client.get(url)
+    return client.get(url, headers=NOCACHE_HEADERS, params=_cache_bust())
 
 
 def parse_ex_rights(raw_text: str, date: dt.date) -> list[dict]:
@@ -177,7 +204,11 @@ def fetch_disposition_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:
     url = config.url("twse_disposition")
-    return client.get(url, params={"date": to_yyyymmdd(date), "response": "json"})
+    return client.get(
+        url,
+        headers=NOCACHE_HEADERS,
+        params={"date": to_yyyymmdd(date), "response": "json", **_cache_bust()},
+    )
 
 
 def parse_disposition(raw_text: str, date: dt.date) -> list[dict]:

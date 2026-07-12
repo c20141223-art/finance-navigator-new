@@ -9,6 +9,7 @@ import io
 import pandas as pd
 
 from stock_screener.config import SourcesConfig
+from stock_screener.fetchers.tpex import REQ_HEADERS as TPEX_HEADERS
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
 
@@ -16,7 +17,7 @@ from stock_screener.schema_guard import SchemaMismatchError
 def fetch_tpex_disposition_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:
-    return client.get(config.url("tpex_disposition"))
+    return client.get(config.url("tpex_disposition"), headers=TPEX_HEADERS)
 
 
 def parse_tpex_disposition(content: bytes, date: dt.date, source: str) -> list[dict]:

@@ -27,12 +27,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from stock_screener.config import load_config
-from stock_screener.dateutil_tw import (
-    to_roc_date,
-    to_roc_year_month,
-    to_yyyymmdd,
-    trading_day_candidates,
-)
+from stock_screener.dateutil_tw import trading_day_candidates
+from stock_screener.fetchers import meta, mops, risk_list, tpex, twse
 from stock_screener.http_client import RateLimitedClient
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "docs" / "api_samples"
@@ -66,49 +62,39 @@ def main() -> None:
     # to sidestep both without a real trading-calendar lookup.
     probe_date = trading_day_candidates(today, 4)[0]
 
+    # Every source below goes through its fetcher's own fetch_*_raw so the
+    # verification exercises the exact header profile production will use —
+    # a sample captured with different headers than the pipeline sends would
+    # prove nothing about whether the pipeline works.
+
     # Swagger/OpenAPI catalogs — captured so the *authoritative* endpoint
     # names for institutional/disposition reports can be looked up directly
     # instead of guessed, for the sources still marked UNVERIFIED in
     # config/sources.yaml.
-    save("_twse_openapi_swagger", client.get("https://openapi.twse.com.tw/v1/swagger.json"))
-    save("_tpex_openapi_swagger", client.get("https://www.tpex.org.tw/openapi/swagger.json"))
+    save(
+        "_twse_openapi_swagger",
+        client.get("https://openapi.twse.com.tw/v1/swagger.json", headers=twse.REQ_HEADERS),
+    )
+    save(
+        "_tpex_openapi_swagger",
+        client.get("https://www.tpex.org.tw/openapi/swagger.json", headers=tpex.REQ_HEADERS),
+    )
 
-    save("twse_daily_all", client.get(config.url("twse_daily_all")))
-    save(
-        "twse_daily_history",
-        client.get(config.url("twse_daily_history").format(date=to_yyyymmdd(probe_date))),
-    )
-    save("tpex_daily_all", client.get(config.url("tpex_daily_all")))
-    save(
-        "tpex_daily_history",
-        client.get(config.url("tpex_daily_history").format(roc_date=to_roc_date(probe_date))),
-    )
-    save(
-        "twse_institutional",
-        client.get(config.url("twse_institutional").format(date=to_yyyymmdd(probe_date))),
-    )
-    save("tpex_institutional", client.get(config.url("tpex_institutional")))
-    save(
-        "twse_ex_rights",
-        client.get(config.url("twse_ex_rights").format(date=to_yyyymmdd(probe_date))),
-    )
-    save(
-        "twse_disposition",
-        client.get(config.url("twse_disposition"), params={"date": to_yyyymmdd(probe_date), "response": "json"}),
-    )
-    save("tpex_disposition", client.get(config.url("tpex_disposition")))
-    save("isin_listed", client.get(config.url("isin_listed")))
-    save("isin_otc", client.get(config.url("isin_otc")))
+    save("twse_daily_all", twse.fetch_daily_all_raw(client, config))
+    save("twse_daily_history", twse.fetch_daily_history_raw(client, config, probe_date))
+    save("tpex_daily_all", tpex.fetch_daily_all_raw(client, config))
+    save("tpex_daily_history", tpex.fetch_daily_history_raw(client, config, probe_date))
+    save("twse_institutional", twse.fetch_institutional_raw(client, config, probe_date))
+    save("tpex_institutional", tpex.fetch_institutional_raw(client, config))
+    save("twse_ex_rights", twse.fetch_ex_rights_raw(client, config, probe_date))
+    save("twse_disposition", twse.fetch_disposition_raw(client, config, probe_date))
+    save("tpex_disposition", risk_list.fetch_tpex_disposition_raw(client, config, probe_date))
+    save("isin_listed", meta.fetch_isin_raw(client, config, "listed"))
+    save("isin_otc", meta.fetch_isin_raw(client, config, "otc"))
 
-    roc_year, month = to_roc_year_month(probe_date.replace(day=1) - dt.timedelta(days=1))
-    save(
-        "mops_monthly_revenue_sii",
-        client.get(config.url("mops_monthly_revenue_sii").format(roc_year=roc_year, month=month)),
-    )
-    save(
-        "mops_monthly_revenue_otc",
-        client.get(config.url("mops_monthly_revenue_otc").format(roc_year=roc_year, month=month)),
-    )
+    prev_month = probe_date.replace(day=1) - dt.timedelta(days=1)
+    save("mops_monthly_revenue_sii", mops.fetch_monthly_revenue_raw(client, config, prev_month, "sii"))
+    save("mops_monthly_revenue_otc", mops.fetch_monthly_revenue_raw(client, config, prev_month, "otc"))
 
     print(f"\nSamples written to {SAMPLES_DIR}")
 

@@ -35,16 +35,25 @@ from stock_screener.fetchers.common import find_column, to_float, to_int
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
 
+# Same shape as the header profile proven to work against TWSE from GitHub
+# Actions (see fetchers/twse.py docstring), with the Referer pointed at
+# TPEx's own site.
+REQ_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)",
+    "Accept": "application/json",
+    "Referer": "https://www.tpex.org.tw/",
+}
+
 
 def fetch_daily_all_raw(client: RateLimitedClient, config: SourcesConfig) -> RequestOutcome:
-    return client.get(config.url("tpex_daily_all"))
+    return client.get(config.url("tpex_daily_all"), headers=REQ_HEADERS)
 
 
 def fetch_daily_history_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:
     url = config.url("tpex_daily_history").format(roc_date=to_roc_date(date))
-    return client.get(url)
+    return client.get(url, headers=REQ_HEADERS)
 
 
 def parse_daily_all(raw_text: str) -> list[dict]:
@@ -132,7 +141,7 @@ def parse_daily_history(raw_text: str, date: dt.date) -> list[dict]:
 
 
 def fetch_institutional_raw(client: RateLimitedClient, config: SourcesConfig) -> RequestOutcome:
-    return client.get(config.url("tpex_institutional"))
+    return client.get(config.url("tpex_institutional"), headers=REQ_HEADERS)
 
 
 def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:

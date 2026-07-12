@@ -15,8 +15,9 @@ class _FakeSession:
         self.calls = 0
         self.headers = {}
 
-    def get(self, url, params=None, timeout=None):
+    def get(self, url, params=None, headers=None, timeout=None):
         self.calls += 1
+        self.last_headers = headers
         return self._responses.pop(0)
 
 
@@ -33,6 +34,13 @@ def test_get_succeeds_first_try():
     assert outcome.ok
     assert outcome.attempts == 1
     assert session.calls == 1
+
+
+def test_get_passes_per_request_headers():
+    session = _FakeSession([_FakeResponse(200, "ok")])
+    client = RateLimitedClient(_config(), session=session)
+    client.get("https://example.com/a", headers={"Referer": "https://www.twse.com.tw/"})
+    assert session.last_headers == {"Referer": "https://www.twse.com.tw/"}
 
 
 def test_get_retries_then_succeeds():

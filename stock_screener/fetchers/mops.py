@@ -20,6 +20,17 @@ from stock_screener.schema_guard import SchemaMismatchError
 
 import datetime as dt
 
+# No PROVEN header recipe exists for mops.twse.com.tw (the stock-report
+# project never hits MOPS), so this mirrors the profile that works for
+# TWSE's other domains as a best effort. If the next verification round
+# still gets blocked here, this needs a different strategy, not more
+# header tweaking.
+REQ_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)",
+    "Accept": "text/html,application/xhtml+xml",
+    "Referer": "https://mops.twse.com.tw/",
+}
+
 
 def fetch_monthly_revenue_raw(
     client: RateLimitedClient, config: SourcesConfig, month: dt.date, market: str
@@ -28,7 +39,7 @@ def fetch_monthly_revenue_raw(
     roc_year, mm = to_roc_year_month(month)
     url_key = f"mops_monthly_revenue_{market}"
     url = config.url(url_key).format(roc_year=roc_year, month=mm)
-    return client.get(url)
+    return client.get(url, headers=REQ_HEADERS)
 
 
 def parse_monthly_revenue(content: bytes, year_month: str, source: str) -> list[dict]:
