@@ -20,6 +20,29 @@ def to_yyyymmdd(date: dt.date) -> str:
     return date.strftime("%Y%m%d")
 
 
+def parse_roc_date(text: str) -> dt.date | None:
+    """Parses the ROC-calendar date formats seen in live TWSE/TPEx samples:
+    '115/07/03', '115年07月13日', '1150703' (7 digits). Returns None on
+    anything unrecognizable rather than raising — callers treat unparsable
+    dates defensively."""
+    if not text:
+        return None
+    cleaned = str(text).strip().replace("年", "/").replace("月", "/").replace("日", "")
+    try:
+        if "/" in cleaned:
+            parts = cleaned.split("/")
+            if len(parts) != 3:
+                return None
+            year, month, day = (int(p) for p in parts)
+        elif len(cleaned) == 7 and cleaned.isdigit():
+            year, month, day = int(cleaned[:3]), int(cleaned[3:5]), int(cleaned[5:7])
+        else:
+            return None
+        return dt.date(year + 1911, month, day)
+    except ValueError:
+        return None
+
+
 def is_weekend(date: dt.date) -> bool:
     return date.weekday() >= 5
 

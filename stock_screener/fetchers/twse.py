@@ -1,6 +1,15 @@
-"""TWSE (上市) fetchers. See config/sources.yaml header for the
-verification caveat — endpoint URLs and field layouts here are best-effort
-until scripts/verify_api_samples.py has been run against a live network.
+"""TWSE (上市) fetchers. Field layouts verified 2026-07-12 against live
+samples captured by the second verify_api_samples.py run (see
+docs/api_samples/) — the notable surprises the samples exposed:
+
+- www.twse.com.tw MI_INDEX now returns the same `tables` wrapper shape as
+  post-revamp TPEx, not the legacy fields{n}/data{n} pairs.
+- T86's foreign-investor column is 外陸資買賣超股數(不含外資自營商) — the
+  bare 外資買賣超股數 name no longer exists.
+- TWT49U (ex-rights) responds with a date RANGE of upcoming events, each
+  row carrying its own 資料日期; the query date is not the ex-date.
+- The disposition report's rows carry a 處置起迄時間 period — a stock is
+  "in disposition" for that whole range, not just the announcement day.
 
 Header profile below is the one PROVEN to get through TWSE's bot
 protection from GitHub Actions runners: the sibling stock-report project
@@ -19,7 +28,7 @@ import json
 import time
 
 from stock_screener.config import SourcesConfig
-from stock_screener.dateutil_tw import to_yyyymmdd
+from stock_screener.dateutil_tw import parse_roc_date, to_yyyymmdd
 from stock_screener.fetchers.common import find_column, find_price_table, to_float, to_int
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
@@ -137,9 +146,10 @@ def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:
         return []
 
     idx_id = find_column(fields, ("證券代號",), source="twse_institutional")
-    idx_foreign = find_column(
-        fields, ("外資", "買賣超"), must_not_contain=("自營商",), source="twse_institutional"
-    )
+    # Live T86 field is 外陸資買賣超股數(不含外資自營商) — 外資自營商 is
+    # reported separately and deliberately not counted here, mirroring the
+    # market convention for "外資買賣超".
+    idx_foreign = find_column(fields, ("外陸資", "買賣超"), source="twse_institutional")
     idx_trust = find_column(fields, ("投信", "買賣超"), source="twse_institutional")
     idx_dealer = find_column(
         fields,
@@ -171,7 +181,12 @@ def fetch_ex_rights_raw(
 
 
 def parse_ex_rights(raw_text: str, date: dt.date) -> list[dict]:
-    """除權除息參考價 -> 用於 stock_screener.adjust 回推調整係數。"""
+    """除權除息參考價 -> 用於 stock_screener.adjust 回推調整係數。
+
+    TWT49U returns a range of upcoming pre-announced ex-rights events; each
+    row's own 資料日期 (ROC format) is the actual ex-date. Rows whose date
+    can't be parsed are skipped — a corporate action with an unknown
+    ex-date is unusable for back-adjustment."""
     payload = json.loads(raw_text)
     if payload.get("stat") not in ("OK", "ok"):
         return []
@@ -181,7 +196,8 @@ def parse_ex_rights(raw_text: str, date: dt.date) -> list[dict]:
         return []
 
     idx_id = find_column(fields, ("代號",), source="twse_ex_rights")
-    idx_ref = find_column(fields, ("參考價",), source="twse_ex_rights")
+    idx_date = find_column(fields, ("資料日期",), source="twse_ex_rights")
+    idx_ref = find_column(fields, ("除權息參考價",), source="twse_ex_rights")
     idx_prev_close = find_column(
         fields, ("收盤價",), must_not_contain=("參考",), source="twse_ex_rights"
     )
@@ -189,11 +205,12 @@ def parse_ex_rights(raw_text: str, date: dt.date) -> list[dict]:
     rows = []
     for row in data:
         stock_id = str(row[idx_id]).strip()
-        if not stock_id:
+        ex_date = parse_roc_date(str(row[idx_date]))
+        if not stock_id or ex_date is None:
             continue
         rows.append({
             "stock_id": stock_id,
-            "ex_date": date.isoformat(),
+            "ex_date": ex_date.isoformat(),
             "reference_price": to_float(row[idx_ref]),
             "prev_close": to_float(row[idx_prev_close]),
         })
@@ -212,6 +229,11 @@ def fetch_disposition_raw(
 
 
 def parse_disposition(raw_text: str, date: dt.date) -> list[dict]:
+    """A disposition applies for the row's whole 處置起迄時間 range (e.g.
+    '115/07/03～115/07/16'), so only rows whose range covers `date` are
+    emitted. If a range fails to parse we include the stock anyway —
+    over-flagging risk beats silently letting a disposed stock through
+    the 排雷 filter."""
     payload = json.loads(raw_text)
     if payload.get("stat") not in ("OK", "ok"):
         return []
@@ -221,11 +243,17 @@ def parse_disposition(raw_text: str, date: dt.date) -> list[dict]:
         return []
 
     idx_id = find_column(fields, ("證券代號",), source="twse_disposition")
+    idx_period = find_column(fields, ("處置起迄",), source="twse_disposition")
 
     rows = []
     for row in data:
         stock_id = str(row[idx_id]).strip()
         if not stock_id:
             continue
+        period = str(row[idx_period])
+        bounds = [parse_roc_date(p) for p in period.replace("~", "～").split("～")]
+        if len(bounds) == 2 and bounds[0] and bounds[1]:
+            if not (bounds[0] <= date <= bounds[1]):
+                continue
         rows.append({"stock_id": stock_id, "date": date.isoformat(), "reason": "處置股"})
     return rows

@@ -77,3 +77,17 @@ def test_update_active_flags_resets_counter_when_seen(tmp_path):
             "SELECT missing_days, is_active, last_seen_date FROM stock_meta WHERE stock_id='2330'"
         ).fetchone()
     assert row == (0, 1, "2026-07-10")
+
+
+def test_upsert_institutional_converts_shares_to_lots(tmp_path):
+    db_path = tmp_path / "market.db"
+    db.init_db(db_path)
+    rows = [{"stock_id": "2330", "date": "2026-07-10",
+             "foreign_net": 2000000, "trust_net": -1500, "dealer_net": None}]
+    with db.get_conn(db_path) as conn:
+        loaders.upsert_institutional(conn, rows, source="twse")
+        stored = conn.execute(
+            "SELECT foreign_net, trust_net, dealer_net FROM institutional "
+            "WHERE stock_id='2330'"
+        ).fetchone()
+    assert stored == (2000, -2, None)  # 股 -> 張

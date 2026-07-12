@@ -111,7 +111,7 @@ def update_risk_list(
         conn, date, "tpex_disposition",
         lambda: _require_ok(
             risk_list.fetch_tpex_disposition_raw(client, config, date), "tpex_disposition",
-            lambda outcome: risk_list.parse_tpex_disposition(outcome.content, date, "tpex_disposition"),
+            lambda outcome: risk_list.parse_tpex_disposition(outcome.text, date, "tpex_disposition"),
         ),
     )
     loaders.upsert_risk_list(conn, tpex_disposition_rows, source="tpex")
@@ -152,17 +152,19 @@ def update_stock_meta(
 
 
 def update_monthly_revenue(
-    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, month: dt.date
+    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date | None = None
 ) -> None:
-    """Only meaningful to run around the 10th-12th of each month (spec 1.5)."""
-    year_month = f"{month.year:04d}-{month.month:02d}"
+    """Only meaningful to run around the 10th-12th of each month (spec 1.5).
+    The endpoints return the latest published month; each row's own
+    資料年月 determines which month gets stored."""
+    date = date or dt.date.today()
     for market in ("sii", "otc"):
-        source = f"mops_monthly_revenue_{market}"
+        source = f"monthly_revenue_{market}"
         rows = _run_source(
-            conn, month, source,
+            conn, date, source,
             lambda market=market, source=source: _require_ok(
-                mops.fetch_monthly_revenue_raw(client, config, month, market), source,
-                lambda outcome: mops.parse_monthly_revenue(outcome.content, year_month, source),
+                mops.fetch_monthly_revenue_raw(client, config, market), source,
+                lambda outcome: mops.parse_monthly_revenue(outcome.text, source),
             ),
         )
         loaders.upsert_monthly_revenue(conn, rows, source=market)

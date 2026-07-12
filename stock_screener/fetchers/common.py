@@ -45,30 +45,34 @@ def find_column(
 
 
 def find_price_table(payload: dict, source: str) -> tuple[list[str], list[list]]:
-    """MI_INDEX-style responses bundle several fields{n}/data{n} table pairs.
-    Find the one that looks like the per-stock closing-price table (has a
-    column that mentions 證券代號 and one that mentions 收盤價)."""
+    """Multi-table responses: find the per-stock closing-price table (has a
+    column mentioning 證券代號/股票代號 and one mentioning 收盤價).
+
+    Handles both shapes seen in the wild (2026-07 live samples):
+    - `{"tables": [{"fields": [...], "data": [...]}, ...]}` — what both
+      www.twse.com.tw MI_INDEX and TPEx return after their site revamps.
+    - legacy numbered `fields{n}`/`data{n}` pairs — kept as fallback in case
+      some endpoint still serves it.
+    """
+    candidates: list[tuple[list[str], list[list]]] = []
+    for table in payload.get("tables") or []:
+        candidates.append((table.get("fields") or [], table.get("data") or []))
     n = 1
-    seen_field_sets: list[list[str]] = []
-    while True:
-        fields_key = f"fields{n}"
-        data_key = f"data{n}"
-        if fields_key not in payload:
-            break
-        fields = payload.get(fields_key) or []
-        data = payload.get(data_key) or []
-        seen_field_sets.append(fields)
+    while f"fields{n}" in payload:
+        candidates.append((payload.get(f"fields{n}") or [], payload.get(f"data{n}") or []))
+        n += 1
+
+    for fields, data in candidates:
         normalized = [normalize_header(f) for f in fields]
         has_id = any("證券代號" in f or "股票代號" in f for f in normalized)
         has_close = any("收盤價" in f for f in normalized)
         if has_id and has_close:
             return fields, data
-        n += 1
 
     raise SchemaMismatchError(
         source,
-        expected={"一組同時包含 證券代號 與 收盤價 欄位的 fields/data 表"},
-        actual={str(f) for fs in seen_field_sets for f in fs},
+        expected={"一組同時包含 證券代號 與 收盤價 欄位的表格"},
+        actual={str(f) for fields, _ in candidates for f in fields},
     )
 
 

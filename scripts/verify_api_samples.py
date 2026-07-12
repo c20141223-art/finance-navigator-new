@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """Fetches ONE real sample from every data source in config/sources.yaml and
-saves the raw response to docs/api_samples/. Run this in an environment
-with real network access (GitHub Actions runner, or your own machine) — the
-sandbox this project was originally scaffolded in cannot reach twse.com.tw /
-tpex.org.tw / mops.twse.com.tw at all (egress allowlist), so every endpoint
-in config/sources.yaml is UNVERIFIED until this has been run once.
+saves the raw response to docs/api_samples/. Run it in an environment with
+real network access (the "Verify API samples" GitHub Actions workflow, or
+your own machine) whenever an endpoint or parser assumption needs
+re-confirmation — see docs/api_samples/README.md for the running log of
+what each round found.
 
 This script does NOT validate or parse anything against the fetchers'
-expected schema — it just captures ground truth. After running it:
-  1. Open each file in docs/api_samples/ and compare its actual field names
-     against what stock_screener/fetchers/*.py expects.
-  2. Fix any mismatches in the fetchers.
-  3. Re-run this script's twin, the actual fetcher unit tests, against the
-     saved samples (see tests/fixtures/ + tests/test_fetchers_parse.py).
+expected schema — it just captures ground truth. After running it, compare
+each file's actual shape against the corresponding parse_* in
+stock_screener/fetchers/ and fix any mismatch there.
 
 Usage:
     python scripts/verify_api_samples.py
@@ -36,6 +33,11 @@ SAMPLES_DIR = Path(__file__).resolve().parent.parent / "docs" / "api_samples"
 
 def save(name: str, outcome) -> None:
     SAMPLES_DIR.mkdir(parents=True, exist_ok=True)
+    # Remove this source's artifacts from previous rounds first, so a
+    # source that flips between ok/error doesn't leave a stale misleading
+    # file behind.
+    for stale in SAMPLES_DIR.glob(f"{name}.*"):
+        stale.unlink()
     status = "OK" if outcome.ok else f"FAILED ({outcome.error})"
     print(f"[{name}] {status}")
     if not outcome.ok:
@@ -92,9 +94,8 @@ def main() -> None:
     save("isin_listed", meta.fetch_isin_raw(client, config, "listed"))
     save("isin_otc", meta.fetch_isin_raw(client, config, "otc"))
 
-    prev_month = probe_date.replace(day=1) - dt.timedelta(days=1)
-    save("mops_monthly_revenue_sii", mops.fetch_monthly_revenue_raw(client, config, prev_month, "sii"))
-    save("mops_monthly_revenue_otc", mops.fetch_monthly_revenue_raw(client, config, prev_month, "otc"))
+    save("monthly_revenue_sii", mops.fetch_monthly_revenue_raw(client, config, "sii"))
+    save("monthly_revenue_otc", mops.fetch_monthly_revenue_raw(client, config, "otc"))
 
     print(f"\nSamples written to {SAMPLES_DIR}")
 

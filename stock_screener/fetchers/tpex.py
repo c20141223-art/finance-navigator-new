@@ -1,27 +1,19 @@
 """TPEx (上櫃) fetchers.
 
-Verified 2026-07-11 against live responses captured by
-scripts/verify_api_samples.py (see docs/api_samples/README.md for the
-verification log). Confirmed so far:
+Verification status (two live rounds, 2026-07-11/12, samples in
+docs/api_samples/):
 
-- `tpex_daily_all` (openapi mainboard daily close quotes): flat JSON array,
-  field names differ from TWSE's openapi convention — see `parse_daily_all`.
-- `tpex_daily_history`: NOT the legacy `{"aaData": [[...]]}` shape we'd
-  guessed. TPEx's site relaunched in Oct 2024 and the report now comes back
-  as `{"tables": [{"fields": [...], "data": [...]}], "stat": "ok", ...}` —
-  structurally like TWSE's fields/data pairs, just wrapped in a "tables"
-  list instead of numbered keys. Column ORDER is still not to be trusted
-  positionally (same class of risk as before), so we look columns up by
-  keyword via `find_column`, same as the TWSE fetchers do.
-  NOTE: the captured sample had `data: []` (zero rows) for the probed date,
-  so the field *names* are confirmed but no actual data row has been
-  checked yet — re-verify against a response with rows before fully
-  trusting the value-level parsing.
-
-Still UNVERIFIED / broken as of the same run — see docs/api_samples/README.md:
-- `tpex_institutional`: the openapi.../tpex_3insti_daily_trade path resolved
-  to the TPEx homepage template, not JSON. The correct openapi endpoint name
-  for this report is not yet confirmed.
+- `tpex_daily_all`: field names confirmed against a full live sample.
+- `tpex_daily_history`: post-2024-revamp `tables` wrapper shape confirmed,
+  including value-level parsing against a 1012-row sample.
+- `tpex_institutional`: round two proved the guessed path
+  tpex_3insti_daily_trade wrong (serves the homepage); the authoritative
+  path from TPEx's own swagger catalog (docs/api_samples/
+  _tpex_openapi_swagger.json) is /tpex_3insti_daily_trading, and
+  `parse_institutional` uses that schema's property names. The swagger
+  spells several of them with erratic spaces (e.g. "Dealers -TotalSell"),
+  so keys are matched space-insensitively. No live sample captured yet —
+  schema-verified only.
 """
 
 from __future__ import annotations
@@ -144,29 +136,46 @@ def fetch_institutional_raw(client: RateLimitedClient, config: SourcesConfig) ->
     return client.get(config.url("tpex_institutional"), headers=REQ_HEADERS)
 
 
+def _norm_key(key: str) -> str:
+    return key.replace(" ", "")
+
+
+def _pick(rec_normed: dict, target: str, source: str):
+    try:
+        return rec_normed[_norm_key(target)]
+    except KeyError:
+        raise SchemaMismatchError(source, expected={target}, actual=set(rec_normed)) from None
+
+
 def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:
-    """UNVERIFIED shape — assumed flat JSON array like tpex_daily_all.
-    The live-verification run found the configured URL resolves to the
-    TPEx homepage, not this report, so the endpoint path itself is still
-    wrong. See docs/api_samples/README.md."""
+    """/tpex_3insti_daily_trading per swagger schema. Foreign net uses the
+    "(Foreign Dealers excluded)" variant to mirror TWSE T86's
+    外陸資(不含外資自營商) convention. Values are 股 (shares); the loader
+    converts to 張."""
     payload = json.loads(raw_text)
     if not isinstance(payload, list):
         raise SchemaMismatchError(
             "tpex_institutional", expected={"<list>"}, actual={type(payload).__name__}
         )
-    required = {"Code", "ForeignInvestorsNetBuySell", "SecuritiesInvestorsNetBuySell", "DealersNetBuySell"}
-    if payload:
-        actual = set(payload[0].keys())
-        if not required.issubset(actual):
-            raise SchemaMismatchError("tpex_institutional", expected=required, actual=actual)
 
     rows = []
     for rec in payload:
+        rec_normed = {_norm_key(k): v for k, v in rec.items()}
+        stock_id = str(_pick(rec_normed, "SecuritiesCompanyCode", "tpex_institutional")).strip()
+        if not stock_id:
+            continue
+        foreign = _pick(
+            rec_normed,
+            "Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference",
+            "tpex_institutional",
+        )
+        trust = _pick(rec_normed, "SecuritiesInvestmentTrustCompanies-Difference", "tpex_institutional")
+        dealer = _pick(rec_normed, "Dealers-Difference", "tpex_institutional")
         rows.append({
-            "stock_id": rec["Code"],
+            "stock_id": stock_id,
             "date": date.isoformat(),
-            "foreign_net": to_int(rec.get("ForeignInvestorsNetBuySell")),
-            "trust_net": to_int(rec.get("SecuritiesInvestorsNetBuySell")),
-            "dealer_net": to_int(rec.get("DealersNetBuySell")),
+            "foreign_net": to_int(foreign),
+            "trust_net": to_int(trust),
+            "dealer_net": to_int(dealer),
         })
     return rows

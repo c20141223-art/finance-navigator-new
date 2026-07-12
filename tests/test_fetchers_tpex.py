@@ -82,3 +82,32 @@ def test_parse_daily_history_missing_price_table_raises():
     payload = {"tables": [{"fields": ["指數", "收盤指數"], "data": [["發行量加權股價指數", "17000"]]}]}
     with pytest.raises(SchemaMismatchError):
         tpex.parse_daily_history(json.dumps(payload), dt.date(2026, 7, 10))
+
+
+_3INSTI_REC = {
+    "Date": "1150707", "SecuritiesCompanyCode": "6488", "CompanyName": "環球晶",
+    # Key spellings (including the erratic spaces) exactly as in TPEx's
+    # swagger catalog — see docs/api_samples/_tpex_openapi_swagger.json.
+    "Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Total Buy": "100",
+    " Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Total Sell": "50",
+    "Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference": "50,000",
+    "SecuritiesInvestmentTrustCompanies-TotalBuy": "10",
+    "SecuritiesInvestmentTrustCompanies-TotalSell": "5",
+    "SecuritiesInvestmentTrustCompanies-Difference": "5,000",
+    "Dealers-TotalBuy": "3", "Dealers -TotalSell": "1", "Dealers-Difference": "-2,000",
+    "TotalDifference": "53,000",
+}
+
+
+def test_parse_institutional_swagger_fields():
+    rows = tpex.parse_institutional(json.dumps([_3INSTI_REC]), dt.date(2026, 7, 7))
+    assert rows == [{
+        "stock_id": "6488", "date": "2026-07-07",
+        "foreign_net": 50000, "trust_net": 5000, "dealer_net": -2000,
+    }]
+
+
+def test_parse_institutional_missing_key_raises():
+    rec = {"SecuritiesCompanyCode": "6488", "CompanyName": "環球晶"}
+    with pytest.raises(SchemaMismatchError):
+        tpex.parse_institutional(json.dumps([rec]), dt.date(2026, 7, 7))

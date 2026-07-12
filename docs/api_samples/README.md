@@ -1,76 +1,39 @@
 # API 樣本狀態
 
-**第一輪真實驗證已完成（2026-07-11，透過 GitHub Actions `Verify API
-samples` workflow）。** 結果好壞參半：三個來源的欄位格式已確認並修正了
-程式碼中原本猜錯的部分，五個來源目前打不通（原因分兩類，見下方），需要
-再一輪才能全部確認。**Phase 1 尚未定稿。**
+**兩輪真實驗證完成（2026-07-11 / 07-12，GitHub Actions `Verify API
+samples` workflow）。** 第二輪套用 stock-report 的 headers 配方後，TWSE
+系網域全數打通，所有核心資料源的欄位格式已用真實樣本核對並修正。
 
-## 逐項結果
+## 最終逐項狀態
 
-| 來源 | 狀態 | 說明 |
+| 來源 | 狀態 | 驗證依據 |
 |---|---|---|
-| `tpex_daily_all` | ✅ 已確認並修正 | 真實欄位是 `SecuritiesCompanyCode`/`CompanyName`/`TradingShares` 等，跟原本假設的 `Code`/`Name`/`TradingVolume` 不同。`stock_screener/fetchers/tpex.py` 已依樣本修正，10,093 筆資料完整解析成功。 |
-| `tpex_daily_history` | ⚠️ 部分確認 | 回應格式跟原本假設的舊式 `{"aaData": [[...]]}` **完全不同**——TPEx 官網已改版（2024-10-27），現在回傳 `{"tables": [{"fields": [...], "data": [...]}], "stat": "ok"}`，欄位有名稱可用關鍵字比對（跟 TWSE 的作法一致）。已依此重寫 parser。但當次查詢日 `data` 為空陣列，只確認了欄位「名稱」，尚未確認實際數值 parsing 邏輯（型別、千分位逗號等）。 |
-| `twse_institutional`（T86） | ⚠️ 部分確認 | 端點網址與 JSON envelope（`{"stat": ..., "fields": [...], "data": [...]}`）正常運作，**沒有被擋**。但查詢日剛好回「沒有符合條件的資料」，所以三大法人買賣超的實際欄位名稱和數值仍未見過真實範例。 |
-| `twse_daily_all` | ❌ 被擋 | `openapi.twse.com.tw` 回傳「因為安全性考量，您所執行的頁面無法呈現」的攔截頁，判斷是該站的機器人防護規則擋下 GitHub Actions runner 的來源 IP。 |
-| `isin_listed` / `isin_otc` | ❌ 被擋 | 同上，`isin.twse.com.tw` 也是同一種攔截頁。 |
-| `mops_monthly_revenue_sii` / `_otc` | ❌ 被擋 | 同上，`mops.twse.com.tw` 也是。 |
-| `twse_daily_history` / `twse_disposition` / `twse_ex_rights` | ❌ HTTP 307 | 同樣在 `www.twse.com.tw` 底下，但跟 T86 不同的攔截方式（307 轉址而非明顯的攔截頁）。同一網域下不同路徑的機器人防護規則顯然不一致。 |
-| `tpex_institutional` | ❌ 網址錯誤 | 回應是 TPEx 官網首頁樣板（非 JSON），代表 `tpex_3insti_daily_trade` 這個 openapi 端點名稱本身就是錯的或已改名，不是網路問題。 |
-| `tpex_disposition` | ❌ 404 | 舊網址在 TPEx 2024-10-27 改版後已下架。已依網路搜尋結果換成新版網址 `disposal_information.php`（未帶 `_print`），**下一輪需要驗證**。 |
+| `twse_daily_all` | ✅ 樣本核對通過 | 1,369 筆真實資料完整解析 |
+| `twse_daily_history` | ✅ 樣本核對後修正 | 回應已改為 `tables` 包裝格式（跟 TPEx 改版後一致），parser 重寫；台積電 07/07 收盤 2440 等數值可對看盤軟體抽查 |
+| `twse_institutional`（T86） | ✅ 樣本核對後修正 | 外資欄位實名為「外陸資買賣超股數(不含外資自營商)」，關鍵字比對已修正；14,526 筆解析成功 |
+| `twse_ex_rights`（TWT49U） | ✅ 樣本核對後修正 | 回傳的是未來除權息「預告區間」，每列有自己的 資料日期——parser 改用每列日期當 ex_date |
+| `twse_disposition` | ✅ 樣本核對後修正 | 每列含 處置起迄時間 區間，parser 改為只納入查詢日落在區間內的股票 |
+| `tpex_daily_all` | ✅ 樣本核對通過 | 10,093 筆（第一輪已修正欄名） |
+| `tpex_daily_history` | ✅ 樣本核對通過 | 第二輪抓到 1,012 筆有資料的回應，數值層級確認 |
+| `isin_listed` / `isin_otc` | ✅ 樣本核對後修正 | 站方已改用 UTF-8（非舊 Big5）；表頭在資料列第 0 列需自行提升；上市 31,021 筆（含 ETF/權證）、台積電＝半導體業 ✓ |
+| `tpex_institutional` | ⚠️ schema 已確認、待真實樣本 | 第二輪證實舊猜測路徑錯誤（回首頁）；正確路徑 `/tpex_3insti_daily_trading` 取自官方 swagger（`_tpex_openapi_swagger.json`），parser 依 swagger 欄名實作（欄名有不規則空格，已做空格不敏感比對） |
+| `tpex_disposition` | ⚠️ schema 已確認、待真實樣本 | 舊 print 頁 404、新頁面 JS 渲染無表格；改用 swagger 中的 `/tpex_disposal_information` JSON 端點 |
+| `monthly_revenue_sii` / `_otc` | ⚠️ schema 已確認、待真實樣本 | 原 MOPS 靜態檔（nas/t21）404，該發布路徑已下架。改用兩交易所 openapi 的月營收彙總表（`/opendata/t187ap05_L`、`/mopsfin_t187ap05_O`），兩者中文欄名完全一致，且都在已驗證打通的網域上——不需要用到 data.gov.tw |
 
-## 已修正的程式碼
+## 破案紀錄：第一輪為什麼被擋
 
-- `stock_screener/fetchers/tpex.py`：`parse_daily_all`、`parse_daily_history`
-  已依真實樣本重寫。
-- `config/sources.yaml`：`tpex_disposition` 改成新版網址（未驗證）。
-- `scripts/verify_api_samples.py`：改用「往前推幾個交易日」而非「今天」
-  作為 date 參數的探測日期，避免撞到當天報告還沒發布或忘記排除國定假日
-  的情況；同時新增抓取 TWSE／TPEx 官方 Swagger 目錄
-  （`_twse_openapi_swagger` / `_tpex_openapi_swagger`），下一輪執行後
-  可直接查表找到 `tpex_institutional` 的正確端點名稱，不用再用搜尋引擎
-  猜。
+第一輪的 UA 帶自我識別 URL（`+https://github.com/...`），TWSE 的機器人
+防護按此特徵攔截（攔截頁或無 Location 的 307——已用本機測試排除
+redirect-following 的嫌疑）。第二輪改用 stock-report 驗證過的瀏覽器型
+UA + Referer 配方後全數放行。此配方現為 `fetchers/*.py` 內建預設。
 
-## 第二輪前已套用的修正（2026-07-12，基於 stock-report 的已驗證模式）
+## 殘餘事項（不阻擋 Phase 1 定稿）
 
-姊妹專案 c20141223-art/stock-report 每天從 GitHub Actions 成功抓取
-openapi.twse.com.tw 與 www.twse.com.tw 已數月，證明 TWSE 對 Actions IP
-並非全面封鎖——第一輪被擋的關鍵差異在 **headers**。已比對其成功配方並
-移植：
+三個 ⚠️ 來源的端點路徑與欄位 schema 都取自交易所官方 swagger 目錄
+（非猜測），parser 依此實作並有單元測試，但尚未抓過真實回應。它們會在
+下一次 workflow 觸發或第一次正式排程執行時自動留下真實樣本
+（`verify_api_samples.py` 已納入這些端點），屆時若欄位有出入，
+`SchemaMismatchError` 會明確報錯並記錄於 `fetch_log`，不會靜默出錯。
 
-1. **User-Agent**：第一輪用的 UA 帶自我識別 URL
-   （`+https://github.com/...`，慣例上的 bot 自我介紹格式），改為
-   `Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)`（stock-report 用
-   同格式的 `StockReport/3.0` 已驗證可通）。
-2. **Referer**：所有請求補上指向來源網站本身的 Referer
-   （twse→`https://www.twse.com.tw/`，tpex→`https://www.tpex.org.tw/`）。
-3. **no-cache + 時間戳破快取**：www.twse.com.tw 的 rwd 系端點加
-   `Cache-Control: no-cache, no-store`、`Pragma: no-cache` 與 `_=毫秒`
-   參數（stock-report 的實戰配方）。
-4. **Redirect 追蹤已排除嫌疑**：已用本機測試伺服器實測 `RateLimitedClient`
-   會正常跟隨 307（requests 預設行為），第一輪記錄到的 HTTP 307 是 WAF
-   回的終端回應（無有效 Location），不是 client 沒跟 redirect。
-5. **verify_api_samples.py 改走 fetcher 本身的 fetch_*_raw**：確保驗證
-   時送出的 headers 跟正式 pipeline 完全一致，不再各寫各的。
-
-注意：**MOPS 與 isin.twse.com.tw 沒有已驗證配方**（stock-report 不使用
-這兩個網域），目前只是套用同款 headers 當 best effort，第二輪若仍被擋，
-需要換資料源策略（如 data.gov.tw 的月營收資料集）而非繼續調 headers。
-
-## 第二輪觸發後的核對清單
-
-1. **twse 系端點**：headers 修正後是否全數打通（特別是第一輪被擋的
-   `twse_daily_all`／`twse_daily_history`／`twse_disposition`／
-   `twse_ex_rights`）。
-2. **`tpex_institutional`**：讀 `_tpex_openapi_swagger.json`，找三大法人
-   買賣超相關的端點路徑，更新 `config/sources.yaml`。
-3. **`tpex_disposition`**：確認新網址 `disposal_information.php` 回傳的
-   HTML 表格結構是否跟 `risk_list.parse_tpex_disposition` 的假設相符。
-4. **`twse_institutional`**：探測日已改為往前推 3 個交易日，確認抓到有
-   資料的回應後，核對 `parse_institutional` 假設的欄位名稱。
-5. **`tpex_daily_history`**：同上，確認有資料列後核對數值層級的 parsing。
-6. **MOPS / isin**：若仍被擋，討論替代資料源。
-
-若 headers 修正後 twse 系端點仍被擋，備用假設是 **執行時段**：
-stock-report 固定在台灣清晨 06:30 執行，WAF 對不同時段的容忍度可能
-不同，可實驗把 verify 排在同時段。
+`_twse_openapi_swagger.json` / `_tpex_openapi_swagger.json` 為兩站完整
+API 目錄，日後找新資料源時先查這兩份，不要再猜端點。

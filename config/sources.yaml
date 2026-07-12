@@ -1,29 +1,20 @@
 # 資料源設定 — 台股選股工具 Phase 1
 #
-# 驗證狀態（2026-07-11 第一輪 GitHub Actions 執行結果，詳見
-# docs/api_samples/README.md 完整記錄）：
+# 驗證狀態（兩輪 GitHub Actions 真實請求，2026-07-11/12，完整記錄見
+# docs/api_samples/README.md）：
 #
-#   已確認可用：twse_institutional（T86，格式正確，當次查詢日剛好無資料）、
-#               tpex_daily_all（欄位已依真實樣本修正）、
-#               tpex_daily_history（格式已依真實樣本改寫，但當次回應
-#               data 為空陣列，欄位名稱已確認、實際數值尚未核對）
-#   仍未驗證／已知有問題：
-#     - twse_daily_all / isin_listed / isin_otc / mops_monthly_revenue_*
-#       這幾個 twse.com.tw 系網域被 WAF 擋下（回應「因為安全性考量」的
-#       攔截頁），研判是 GitHub Actions runner 的來源 IP 被該站的機器人
-#       防護規則擋下，不是程式邏輯問題。
-#     - twse_daily_history / twse_disposition / twse_ex_rights 收到
-#       HTTP 307（同一批 www.twse.com.tw 底下，T86 沒被擋，其他路徑被擋，
-#       研判是該站對特定路徑的機器人防護規則不同）。
-#     - tpex_institutional 端點路徑錯誤（回應是 TPEx 首頁樣板，不是
-#       JSON），實際正確的 openapi 端點名稱尚未找到。
-#     - tpex_disposition 原路徑回 404（TPEx 官網已於 2024-10-27 改版），
-#       已依網路搜尋結果更新為新版路徑，但尚未經真實請求驗證。
+#   已用真實樣本確認（含資料列）：
+#     twse_daily_all, twse_daily_history, twse_institutional,
+#     twse_ex_rights, twse_disposition, tpex_daily_all,
+#     tpex_daily_history, isin_listed, isin_otc
+#   端點路徑取自官方 swagger 目錄、尚未抓到真實樣本（第三輪確認）：
+#     tpex_institutional（/tpex_3insti_daily_trading）
+#     tpex_disposition（/tpex_disposal_information）
+#     monthly_revenue_sii / monthly_revenue_otc（原 MOPS 靜態檔已 404，
+#       改用兩交易所 openapi 的月營收彙總表）
 #
-# 下一輪驗證需要：(a) 對 twse.com.tw 系網域的請求方式做調整（例如降低併發
-# 密集度、確認 header）並觀察是否仍被擋，(b) 找到 tpex_institutional 正確
-# 端點名稱，(c) 確認 tpex_disposition 新路徑格式。在此之前，這些來源在
-# pipeline 執行時會被記錄為 fetch_log 失敗，不會讓其他來源跟著失敗。
+# Headers 策略：沿用 stock-report 專案已驗證數月的格式（瀏覽器型 UA +
+# 指向來源網站的 Referer），定義於各 fetchers 模組。
 
 http:
   timeout_seconds: 20
@@ -44,42 +35,38 @@ sources:
   twse_daily_all: "https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL"
 
   # 上市全市場「指定日期」收盤行情（回補歷史用，需逐日呼叫）
-  # date 參數格式 YYYYMMDD（西元）
-  twse_daily_history: "https://www.twse.com.tw/exchangeReport/MI_INDEX?date={date}&type=ALLBUT0999"
+  # date 參數格式 YYYYMMDD（西元）。回應為 tables 包裝格式。
+  twse_daily_history: "https://www.twse.com.tw/exchangeReport/MI_INDEX?date={date}&type=ALLBUT0999&response=json"
 
-  # 上櫃（TPEx）全市場日收盤行情，整批 JSON（TPEx openapi 慣例路徑，僅最新日）
+  # 上櫃（TPEx）全市場日收盤行情，整批 JSON（僅最新日）
   tpex_daily_all: "https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes"
 
   # 上櫃全市場「指定日期」收盤行情（回補歷史用）。d 參數為民國年/月/日
   tpex_daily_history: "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&se=EW"
 
-  # 上市三大法人買賣超日報（整批，需帶 date 參數，西元 YYYYMMDD）
+  # 上市三大法人買賣超日報（T86，整批，date 為西元 YYYYMMDD）
   twse_institutional: "https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALL&response=json"
 
-  # 上櫃三大法人買賣超日報（整批 JSON，僅最新日；歷史需改用日期版端點，
-  # 待驗證後補上）
-  tpex_institutional: "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trade"
+  # 上櫃三大法人買賣明細（openapi，僅最新日；路徑取自官方 swagger）
+  tpex_institutional: "https://www.tpex.org.tw/openapi/v1/tpex_3insti_daily_trading"
 
-  # 月營收彙總表（MOPS），{roc_year} 為民國年，{month} 為兩位數月份
-  # sii = 上市, otc = 上櫃
-  mops_monthly_revenue_sii: "https://mops.twse.com.tw/nas/t21/sii/t21sc03_{roc_year}_{month}_0.html"
-  mops_monthly_revenue_otc: "https://mops.twse.com.tw/nas/t21/otc/t21sc03_{roc_year}_{month}_0.html"
+  # 月營收彙總表：原 MOPS 靜態檔（mops.twse.com.tw/nas/t21/...）已 404，
+  # 改用兩交易所 openapi 的同一份報表（回傳最新可得月份，資料月份以
+  # 回應內的 資料年月 欄位為準）
+  monthly_revenue_sii: "https://openapi.twse.com.tw/v1/opendata/t187ap05_L"
+  monthly_revenue_otc: "https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O"
 
-  # 上市處置股 / 注意股公告
+  # 上市處置股公告（回應每列含 處置起迄時間 區間）
   twse_disposition: "https://www.twse.com.tw/rwd/zh/announcement/punish"
-  twse_attention: "https://www.twse.com.tw/rwd/zh/announcement/notice"
 
-  # 上櫃（TPEx）處置股 / 注意股公告
-  # 舊路徑 disposal_information_print.php 在 2026-07-11 驗證時回 404
-  # （TPEx 官網已於 2024-10-27 改版）。此為依網路搜尋結果更新的新版路徑，
-  # 尚未經真實請求驗證，下一輪 verify_api_samples.py 需確認。
-  tpex_disposition: "https://www.tpex.org.tw/web/bulletin/disposal_information/disposal_information.php?l=zh-tw"
+  # 上櫃處置股（openapi JSON；舊 print-view 頁已 404，新頁面由 JS 渲染
+  # 無法直接解析。路徑取自官方 swagger）
+  tpex_disposition: "https://www.tpex.org.tw/openapi/v1/tpex_disposal_information"
 
   # 全市場證券基本資料（含上市/上櫃別、產業別），ISIN 公告網站
-  # strMode=2 上市, strMode=4 上櫃
+  # strMode=2 上市, strMode=4 上櫃。現為 UTF-8 編碼（舊 Big5 已停用）。
   isin_listed: "https://isin.twse.com.tw/isin/C_public.jsp?strMode=2"
   isin_otc: "https://isin.twse.com.tw/isin/C_public.jsp?strMode=4"
 
-  # 除權除息參考價（用於還原股價回推調整係數）
-  twse_ex_rights: "https://www.twse.com.tw/rwd/zh/exRight/TWT49U"
-  tpex_ex_rights: "https://www.tpex.org.tw/web/stock/exright/preAnnounce/exRightPreAnnounce_print.php"
+  # 除權除息預告（TWT49U，回傳未來一段區間的預告，每列含自己的 資料日期）
+  twse_ex_rights: "https://www.twse.com.tw/rwd/zh/exRight/TWT49U?response=json"

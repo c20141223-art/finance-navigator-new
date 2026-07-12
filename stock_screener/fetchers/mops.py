@@ -1,89 +1,92 @@
-"""MOPS (公開資訊觀測站) monthly revenue fetcher.
+"""Monthly revenue fetcher.
 
-t21sc03_{roc_year}_{month}_0.html is a plain HTML table (Big5 encoding),
-not JSON — this has been the stable public convention for years. We parse
-it with pandas.read_html rather than hand-rolling an HTML parser.
-UNVERIFIED against a live response; see docs/api_samples/README.md.
+The original MOPS static-file URLs (mops.twse.com.tw/nas/t21/...) returned
+HTTP 404 in round-two verification — that publication path is gone. Both
+exchanges now publish the same aggregate monthly-revenue report through
+the openapi domains we have PROVEN reachable from GitHub Actions:
+
+- 上市: https://openapi.twse.com.tw/v1/opendata/t187ap05_L
+- 上櫃: https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap05_O
+
+Both return a flat JSON array with identical Chinese property names
+(confirmed against both sites' swagger catalogs in docs/api_samples/):
+出表日期, 資料年月, 公司代號, 公司名稱, 產業別, 營業收入-當月營收,
+營業收入-上月比較增減(%), 營業收入-去年同月增減(%),
+累計營業收入-前期比較增減(%), etc. 資料年月 is ROC "YYYMM".
+
+These endpoints serve the LATEST available month (no date parameter),
+which matches the spec's "篩選使用最新可得資料，並標注資料月份" — the
+per-row 資料年月 is what gets stored, not the fetch date. Schema-verified
+only; no live sample captured yet.
 """
 
 from __future__ import annotations
 
-import io
-
-import pandas as pd
+import datetime as dt
+import json
 
 from stock_screener.config import SourcesConfig
-from stock_screener.dateutil_tw import to_roc_year_month
 from stock_screener.fetchers.common import to_float, to_int
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
 
-import datetime as dt
-
-# No PROVEN header recipe exists for mops.twse.com.tw (the stock-report
-# project never hits MOPS), so this mirrors the profile that works for
-# TWSE's other domains as a best effort. If the next verification round
-# still gets blocked here, this needs a different strategy, not more
-# header tweaking.
-REQ_HEADERS = {
+TWSE_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)",
-    "Accept": "text/html,application/xhtml+xml",
-    "Referer": "https://mops.twse.com.tw/",
+    "Accept": "application/json",
+    "Referer": "https://www.twse.com.tw/",
+}
+TPEX_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (compatible; TaiwanStockScreener/1.0)",
+    "Accept": "application/json",
+    "Referer": "https://www.tpex.org.tw/",
 }
 
 
 def fetch_monthly_revenue_raw(
-    client: RateLimitedClient, config: SourcesConfig, month: dt.date, market: str
+    client: RateLimitedClient, config: SourcesConfig, market: str
 ) -> RequestOutcome:
-    """market: 'sii' (上市) or 'otc' (上櫃)."""
-    roc_year, mm = to_roc_year_month(month)
-    url_key = f"mops_monthly_revenue_{market}"
-    url = config.url(url_key).format(roc_year=roc_year, month=mm)
-    return client.get(url, headers=REQ_HEADERS)
+    """market: 'sii' (上市) or 'otc' (上櫃). Returns the latest published
+    month — the endpoints take no date parameter."""
+    url = config.url(f"monthly_revenue_{market}")
+    headers = TWSE_HEADERS if market == "sii" else TPEX_HEADERS
+    return client.get(url, headers=headers)
 
 
-def parse_monthly_revenue(content: bytes, year_month: str, source: str) -> list[dict]:
-    tables = pd.read_html(io.BytesIO(content), encoding="big5")
-    # The data table is the one with a 公司代號 column and enough columns
-    # to hold current/prior-year revenue and YoY%.
-    target = None
-    for t in tables:
-        cols = [str(c) for c in t.columns]
-        if any("公司代號" in c for c in cols):
-            target = t
-            break
-    if target is None:
-        raise SchemaMismatchError(
-            source, expected={"公司代號 欄位"}, actual={str(t.columns.tolist()) for t in tables}
-        )
+def _roc_year_month_to_iso(raw: str) -> str | None:
+    """'11506' (ROC YYYMM) -> '2026-06'. None if unrecognizable."""
+    cleaned = str(raw).strip().replace("/", "")
+    if not cleaned.isdigit() or len(cleaned) not in (4, 5):
+        return None
+    year, month = int(cleaned[:-2]) + 1911, int(cleaned[-2:])
+    if not 1 <= month <= 12:
+        return None
+    return f"{year:04d}-{month:02d}"
 
-    cols = [str(c) for c in target.columns]
 
-    def find_col(*keywords: str) -> str:
-        matches = [c for c in cols if all(k in c for k in keywords)]
-        if len(matches) != 1:
-            raise SchemaMismatchError(source, expected={f"欄位含{keywords}"}, actual=set(cols))
-        return matches[0]
+def parse_monthly_revenue(raw_text: str, source: str) -> list[dict]:
+    payload = json.loads(raw_text)
+    if not isinstance(payload, list):
+        raise SchemaMismatchError(source, expected={"<list>"}, actual={type(payload).__name__})
 
-    col_id = find_col("公司代號")
-    col_revenue = find_col("營業收入", "當月")
-    col_yoy = find_col("去年同月增減")
-    col_mom = None
-    for c in cols:
-        if "上月比較" in c or "上月增減" in c:
-            col_mom = c
-            break
+    required = {"資料年月", "公司代號", "營業收入-當月營收", "營業收入-去年同月增減(%)"}
+    if payload:
+        actual = set(payload[0].keys())
+        if not required.issubset(actual):
+            raise SchemaMismatchError(source, expected=required, actual=actual)
 
     rows = []
-    for _, row in target.iterrows():
-        stock_id = str(row[col_id]).strip()
-        if not stock_id or not stock_id.isdigit():
-            continue  # skip subtotal / header-repeat rows
+    for rec in payload:
+        stock_id = str(rec["公司代號"]).strip()
+        year_month = _roc_year_month_to_iso(rec["資料年月"])
+        if not stock_id or not stock_id.isdigit() or year_month is None:
+            continue
         rows.append({
             "stock_id": stock_id,
             "year_month": year_month,
-            "revenue": to_int(row[col_revenue]),
-            "yoy": to_float(row[col_yoy]),
-            "mom": to_float(row[col_mom]) if col_mom else None,
+            "revenue": to_int(rec.get("營業收入-當月營收")),
+            "yoy": to_float(rec.get("營業收入-去年同月增減(%)")),
+            "mom": to_float(rec.get("營業收入-上月比較增減(%)")),
+            "cumulative_yoy": to_float(rec.get("累計營業收入-前期比較增減(%)")),
+            "announced_date": None,
         })
     return rows

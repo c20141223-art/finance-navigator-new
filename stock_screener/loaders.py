@@ -46,8 +46,14 @@ def upsert_daily_price(conn: sqlite3.Connection, rows: list[dict], source: str) 
 
 
 def upsert_institutional(conn: sqlite3.Connection, rows: list[dict], source: str) -> int:
+    """Fetcher rows carry 股 (shares, per live T86/TPEx samples); stored as
+    張 per spec 1.2 — same boundary conversion as upsert_daily_price."""
+    def to_lots(v):
+        return None if v is None else round(v / 1000)
+
     payload = [
-        (r["stock_id"], r["date"], r.get("foreign_net"), r.get("trust_net"), r.get("dealer_net"), source)
+        (r["stock_id"], r["date"], to_lots(r.get("foreign_net")),
+         to_lots(r.get("trust_net")), to_lots(r.get("dealer_net")), source)
         for r in rows
     ]
     conn.executemany(

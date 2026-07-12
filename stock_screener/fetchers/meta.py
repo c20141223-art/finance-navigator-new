@@ -27,36 +27,48 @@ def fetch_isin_raw(client: RateLimitedClient, config: SourcesConfig, market: str
 
 
 def parse_isin(content: bytes, market_label: str, source: str) -> list[dict]:
-    tables = pd.read_html(io.BytesIO(content), encoding="big5")
+    # Round-two live sample decodes as UTF-8 (the site's legacy Big5 days
+    # are over), but keep Big5 as fallback in case some variant still
+    # serves it. The page's ancient markup also defeats lxml — pandas
+    # falls back to the bs4/html5lib parser, hence those requirements.
+    try:
+        text = content.decode("utf-8")
+    except UnicodeDecodeError:
+        text = content.decode("big5", errors="replace")
+    tables = pd.read_html(io.StringIO(text))
     if not tables:
         raise SchemaMismatchError(source, expected={"至少一個表格"}, actual=set())
     target = max(tables, key=len)  # the listing table is by far the largest
-    cols = [str(c) for c in target.columns]
 
-    # The ISIN page's first column typically packs "代號　名稱" together
-    # separated by an ideographic space (U+3000).
-    code_name_col = cols[0]
-    industry_col = None
-    for c in cols:
-        if "產業別" in c:
-            industry_col = c
-            break
-    if industry_col is None:
-        raise SchemaMismatchError(source, expected={"產業別 欄位"}, actual=set(cols))
+    # The page's markup predates <th>: pandas reads the header as data
+    # row 0 ('有價證券代號及名稱', '產業別', ...). Promote it to header.
+    header = [str(v) for v in target.iloc[0].tolist()]
+    target = target.iloc[1:]
+    target.columns = header
+
+    code_name_col = next((c for c in header if "代號及名稱" in c), None)
+    industry_col = next((c for c in header if "產業別" in c), None)
+    if code_name_col is None or industry_col is None:
+        raise SchemaMismatchError(
+            source, expected={"有價證券代號及名稱", "產業別"}, actual=set(header)
+        )
 
     rows = []
     for _, row in target.iterrows():
+        # "1101　台泥" — code and name packed together, separated by an
+        # ideographic space (U+3000). Section rows (e.g. "股票") lack it.
         raw = str(row[code_name_col])
         parts = raw.split("　")
         if len(parts) < 2:
-            continue  # section header rows (e.g. "股票")
+            continue
         stock_id, name = parts[0].strip(), parts[1].strip()
         if not stock_id.isalnum() or len(stock_id) > 6:
             continue
+        industry = str(row[industry_col]).strip()
         rows.append({
             "stock_id": stock_id,
             "name": name,
             "market": market_label,
-            "industry": str(row[industry_col]).strip() or None,
+            "industry": industry if industry and industry != "nan" else None,
         })
     return rows

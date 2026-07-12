@@ -4,38 +4,29 @@
 
 每日自動執行的台股選股系統，Phase 1（資料層）目前狀態如下。
 
-### ⚠️ 已知限制：第一輪真實驗證完成，Phase 1 尚未定稿
+### 驗證狀態：兩輪真實請求驗證完成（2026-07-11 / 07-12）
 
-2026-07-11 透過 `.github/workflows/verify-api-samples.yml`（在 `main` 上，
-`workflow_dispatch` 手動觸發，執行內容針對這個 feature branch）跑過一次
-`scripts/verify_api_samples.py`，對 11 個資料源都打了真實請求。結果：
+透過 `main` 上的 `Verify API samples` workflow（`workflow_dispatch`）從
+GitHub Actions 對所有資料源做真實請求，逐項核對回應格式並修正 parser。
+第二輪套用姊妹專案 stock-report 已驗證數月的 headers 配方後，TWSE 系
+網域全數打通。
 
-- **已確認並修正**：`tpex_daily_all`、`tpex_daily_history`（TPEx 官網
-  2024-10-27 改版後回應格式整個變了，原本假設的舊式 `aaData` 格式是錯的，
-  已重寫成真正的 `tables` 格式）。
-- **端點可用但當次沒驗到欄位內容**：`twse_institutional`（T86）——網址
-  和回應外層格式正確，但查詢日剛好沒有資料。
-- **仍然打不通**：`twse_daily_all` / `isin_listed` / `isin_otc` /
-  `mops_monthly_revenue_*` 被 TWSE 網站的機器人防護規則擋下（回攔截頁）；
-  `twse_daily_history` / `twse_disposition` / `twse_ex_rights` 回
-  HTTP 307；`tpex_institutional` 端點名稱錯誤（回首頁樣板）；
-  `tpex_disposition` 舊網址 404，已換新網址但未驗證。
+- **9 個來源已用真實樣本（含資料列）核對通過**：日行情（上市/上櫃、
+  最新日/歷史日）、T86 三大法人、除權息預告、上市處置股、ISIN 基本資料。
+- **3 個來源已改用交易所官方 swagger 目錄記載的端點**（TPEx 三大法人、
+  TPEx 處置股、月營收彙總——原 MOPS 靜態檔路徑已下架 404，月營收改用
+  兩交易所 openapi 的同一份報表），schema 依 swagger 實作、有單元測試，
+  真實樣本會在下次 workflow 觸發或首次正式排程時自動補上；欄位若有出入
+  會以 `SchemaMismatchError` 明確報錯並記錄於 `fetch_log`，不會靜默
+  出錯。
 
-完整逐項結果、已知原因、下一輪待辦，見 `docs/api_samples/README.md`。
-**在這些項目全部確認之前，不能視為 Phase 1 定稿**——尤其是 TWSE 網站的
-機器人防護規則會不會持續擋掉正式排程的請求，是需要另外討論對策的風險，
-不是單純改程式碼就能解決的問題。
-
-再次驗證：
+逐項狀態表與破案紀錄（第一輪為何被擋、TWSE/TPEx 官網改版對格式的影響）
+見 `docs/api_samples/README.md`。重新驗證：手動觸發 workflow，或
 
 ```bash
 pip install -r requirements-stock-screener.txt
 python scripts/verify_api_samples.py
 ```
-
-或直接在 GitHub 手動觸發 `Verify API samples` workflow。所有 parser 在
-欄位對不上時會拋出 `SchemaMismatchError` 並清楚列出缺少哪些欄位，不會
-靜默產生錯誤資料。
 
 ### 目錄結構
 
