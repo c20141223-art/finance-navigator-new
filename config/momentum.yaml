@@ -1,0 +1,79 @@
+# 順勢評分 profile（規格書第 2、3 節）。所有門檻與權重集中於此，
+# 程式碼不含硬編碼參數。調整紀律見 README「版本紀律」一節。
+#
+# bins 語意（stock_screener/scoring.py 的 score_bins）：由上而下逐條比對，
+# 第一個命中的給分；{gt: x} 表示 值 > x、{gte: x} 表示 值 >= x、
+# {range: [a, b]} 表示 a <= 值 < b（含下界、不含上界）、{else: s} 為
+# 保底。原始值缺漏（None）一律 0 分（規格書 1.4：資料不足的因子計 0 分）。
+
+filters:
+  # 近 5 個交易日均量 > 500 張（成交量口徑：TWSE/TPEx 官方日成交資料，
+  # 見 docs/api_samples/README.md）
+  min_avg_volume_5d: 500
+  # 收盤價（原始市場價，非還原價）> 10 元
+  min_price: 10
+  # 具備至少 60 個交易日歷史（同時實作規格書 1.4 的新上市股排除：
+  # 在最近 min_history_days 個全市場交易日中，該股必須每日都有資料）
+  min_history_days: 60
+  # 只納入普通股（4 碼數字且非 0 開頭的代號；排除 ETF、權證、債券等）
+  common_stock_only: true
+
+dimensions:
+  fundamental:
+    weight: 0.30
+    factors:
+      # F1 月營收動能：最新可得月份的單月營收年增率（%）
+      revenue_yoy:
+        bins:
+          - {gt: 30, score: 100}
+          - {gt: 10, score: 60}
+          - {gt: 0, score: 30}
+          - {else: 0}
+      # F2 營收趨勢：最近 3 個「連續」月份的 YoY 逐月走高（Boolean）
+      revenue_trend_3m:
+        score_if_true: 100
+
+  chips:
+    weight: 0.35
+    factors:
+      # C1 投信連買天數：自篩選日往前連續 trust_net > 0 的交易日數
+      #（缺該日資料視為中斷）
+      trust_buy_streak:
+        bins:
+          - {gte: 10, score: 100}
+          - {gte: 5, score: 70}
+          - {gte: 3, score: 40}
+          - {else: 0}
+      # C2 外資買超佔比：近 5 個交易日外資買賣超合計（張）÷ 同期間
+      # 該股總成交量（張）
+      foreign_net_ratio_5d:
+        bins:
+          - {gt: 0.15, score: 100}
+          - {gt: 0.05, score: 60}
+          - {else: 0}
+
+  technical:
+    weight: 0.35
+    factors:
+      # T1 趨勢位階：還原收盤價相對還原價 60MA 的乖離率（%）。
+      # 剛站上（0~8%）高分、8~20% 遞減、20~25% 低分、<0% 或 >25% 零分
+      #（避開追高）。
+      bias_60ma:
+        bins:
+          - {range: [0, 8], score: 100}
+          - {range: [8, 20], score: 60}
+          - {range: [20, 25], score: 30}
+          - {else: 0}
+      # T2 量能：5 日均量 ÷ 20 日均量。1.2~2.5 倍高分、2.5~3.5 倍降分
+      #（過熱／出貨疑慮）、其餘零分。
+      volume_expansion:
+        bins:
+          - {range: [1.2, 2.5], score: 100}
+          - {range: [2.5, 3.5], score: 50}
+          - {else: 0}
+
+output:
+  top_n: 30
+  # 對照組：排名 31–50 名（規格書 5.2），記入 triggers 並標記
+  # is_control_group=1
+  control_group_rank: [31, 50]

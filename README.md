@@ -28,10 +28,31 @@ pip install -r requirements-stock-screener.txt
 python scripts/verify_api_samples.py
 ```
 
+### Phase 2：排雷濾網＋順勢評分（已實作，待驗收）
+
+- `config/momentum.yaml`：全部門檻、bins、權重（規格書第 7 節結構）。
+  bins 語意為由上而下第一個命中給分；`range: [a, b]` 含下界不含上界。
+- `stock_screener/scoring.py`：config 載入＋通用計分器（維度內加總後
+  以 100 封頂，再依權重合成總分）。
+- `stock_screener/momentum.py`：排雷濾網（流動性/價格下限/排雷名單/
+  資料完整性/僅普通股）＋六因子計算＋排名＋triggers 落庫（Top 30 與
+  對照組 31–50 名，`factor_detail` JSON 含每個因子的原始值與得分，
+  供人工覆算；同日重跑冪等取代）。
+- `scripts/run_screen.py`：跑單日篩選並列印完整排名表（含分項得分與
+  因子原始值）。
+- 各回看窗口的精確定義（交易日、連買中斷、還原價 60MA 等）見
+  `stock_screener/momentum.py` 模組 docstring——人工覆算以此為準。
+
+```bash
+# 需先有 >= 60 個交易日資料（scripts/run_backfill.py）
+python scripts/run_screen.py --date 2026-07-14
+```
+
 ### 目錄結構
 
 ```
 config/sources.yaml       資料源端點與 rate limit 設定
+config/momentum.yaml      順勢評分門檻/權重（Phase 2）
 stock_screener/
   db.py                   SQLite schema (daily_price / institutional /
                            monthly_revenue / risk_list / stock_meta /
