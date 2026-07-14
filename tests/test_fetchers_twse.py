@@ -13,22 +13,35 @@ from stock_screener.schema_guard import SchemaMismatchError
 def test_parse_daily_all_happy_path():
     payload = [
         {
-            "Code": "2330", "Name": "台積電", "TradeVolume": "50000000",
+            "Code": "2330", "Name": "台積電", "Date": "1150710", "TradeVolume": "50000000",
             "TradeValue": "5000000000", "OpeningPrice": "1000", "HighestPrice": "1010",
             "LowestPrice": "995", "ClosingPrice": "1005", "Change": "5", "Transaction": "20000",
         }
     ]
-    rows = twse.parse_daily_all(json.dumps(payload))
+    rows = twse.parse_daily_all(json.dumps(payload), dt.date(2026, 7, 12))
     assert rows == [{
-        "stock_id": "2330", "name": "台積電", "open": 1000.0, "high": 1010.0,
+        "stock_id": "2330", "date": "2026-07-10",  # record's own Date wins
+        "name": "台積電", "open": 1000.0, "high": 1010.0,
         "low": 995.0, "close": 1005.0, "volume": 50000000, "turnover": 5000000000,
     }]
+
+
+def test_parse_daily_all_falls_back_to_caller_date_without_date_field():
+    payload = [
+        {
+            "Code": "2330", "Name": "台積電", "TradeVolume": "1000",
+            "TradeValue": "1000", "OpeningPrice": "1", "HighestPrice": "1",
+            "LowestPrice": "1", "ClosingPrice": "1",
+        }
+    ]
+    rows = twse.parse_daily_all(json.dumps(payload), dt.date(2026, 7, 12))
+    assert rows[0]["date"] == "2026-07-12"
 
 
 def test_parse_daily_all_missing_field_raises():
     payload = [{"Code": "2330", "Name": "台積電"}]
     with pytest.raises(SchemaMismatchError):
-        twse.parse_daily_all(json.dumps(payload))
+        twse.parse_daily_all(json.dumps(payload), dt.date(2026, 7, 12))
 
 
 def test_parse_daily_history_tables_shape():

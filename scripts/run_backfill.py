@@ -25,6 +25,12 @@ def main() -> None:
     parser.add_argument("--days", type=int, default=None, help="Overrides config data.min_backfill_trading_days")
     parser.add_argument("--end-date", type=str, default=None, help="YYYY-MM-DD, defaults to today")
     parser.add_argument("--db-path", type=str, default=str(db.DEFAULT_DB_PATH))
+    parser.add_argument(
+        "--min-interval", type=float, default=None,
+        help="Overrides config http.min_interval_seconds — a long backfill "
+             "sends hundreds of requests to the same host, so pace it more "
+             "conservatively than the daily job (e.g. 3.0)",
+    )
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -32,8 +38,13 @@ def main() -> None:
     config = load_config()
     db.init_db(args.db_path)
 
+    http_cfg = config.http
+    if args.min_interval is not None:
+        import dataclasses
+        http_cfg = dataclasses.replace(http_cfg, min_interval_seconds=args.min_interval)
+
     end_date = dt.date.fromisoformat(args.end_date) if args.end_date else dt.date.today()
-    client = RateLimitedClient(config.http)
+    client = RateLimitedClient(http_cfg)
 
     with db.get_conn(args.db_path) as conn:
         pipeline.backfill(conn, client, config, end_date=end_date, n_days=args.days)

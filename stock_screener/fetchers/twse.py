@@ -62,8 +62,10 @@ def fetch_daily_history_raw(
     return client.get(url, headers=NOCACHE_HEADERS, params=_cache_bust())
 
 
-def parse_daily_all(raw_text: str) -> list[dict]:
-    """openapi.twse.com.tw STOCK_DAY_ALL: flat JSON array, English keys."""
+def parse_daily_all(raw_text: str, fallback_date: dt.date) -> list[dict]:
+    """openapi.twse.com.tw STOCK_DAY_ALL: flat JSON array, English keys.
+    Rows are dated by each record's own ROC `Date` field (fallback_date only
+    if missing), so a run on a holiday can't mislabel the latest snapshot."""
     payload = json.loads(raw_text)
     if not isinstance(payload, list):
         raise SchemaMismatchError(
@@ -80,8 +82,10 @@ def parse_daily_all(raw_text: str) -> list[dict]:
 
     rows = []
     for rec in payload:
+        rec_date = parse_roc_date(str(rec.get("Date", ""))) or fallback_date
         rows.append({
             "stock_id": rec["Code"],
+            "date": rec_date.isoformat(),
             "name": rec.get("Name"),
             "open": to_float(rec.get("OpeningPrice")),
             "high": to_float(rec.get("HighestPrice")),

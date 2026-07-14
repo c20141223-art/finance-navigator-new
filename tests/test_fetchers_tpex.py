@@ -23,16 +23,17 @@ def test_parse_daily_all_happy_path():
         "Capitals": "100000000", "NextReferencePrice": "500", "NextLimitUp": "550",
         "NextLimitDown": "450",
     }]
-    rows = tpex.parse_daily_all(json.dumps(payload))
+    rows = tpex.parse_daily_all(json.dumps(payload), dt.date(2026, 7, 12))
     assert rows == [{
-        "stock_id": "6488", "name": "環球晶", "open": 495.0, "high": 505.0,
+        "stock_id": "6488", "date": "2026-07-09",  # record's own Date wins
+        "name": "環球晶", "open": 495.0, "high": 505.0,
         "low": 490.0, "close": 500.0, "volume": 1000000, "turnover": 500000000,
     }]
 
 
 def test_parse_daily_all_missing_field_raises():
     with pytest.raises(SchemaMismatchError):
-        tpex.parse_daily_all(json.dumps([{"SecuritiesCompanyCode": "6488"}]))
+        tpex.parse_daily_all(json.dumps([{"SecuritiesCompanyCode": "6488"}]), dt.date(2026, 7, 12))
 
 
 def test_parse_daily_history_happy_path():

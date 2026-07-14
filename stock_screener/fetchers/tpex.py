@@ -23,7 +23,7 @@ import datetime as dt
 import json
 
 from stock_screener.config import SourcesConfig
-from stock_screener.dateutil_tw import to_roc_date
+from stock_screener.dateutil_tw import parse_roc_date, to_roc_date
 from stock_screener.fetchers.common import find_column, to_float, to_int
 from stock_screener.http_client import RateLimitedClient, RequestOutcome
 from stock_screener.schema_guard import SchemaMismatchError
@@ -49,10 +49,10 @@ def fetch_daily_history_raw(
     return client.get(url, headers=REQ_HEADERS)
 
 
-def parse_daily_all(raw_text: str) -> list[dict]:
+def parse_daily_all(raw_text: str, fallback_date: dt.date) -> list[dict]:
     """Confirmed field names from a live sample (docs/api_samples/tpex_daily_all.json):
     SecuritiesCompanyCode, CompanyName, Close, Open, High, Low, TradingShares,
-    TransactionAmount (NOT Code/Name/TradingVolume as originally guessed)."""
+    TransactionAmount. Rows dated by each record's own ROC `Date` field."""
     payload = json.loads(raw_text)
     if not isinstance(payload, list):
         raise SchemaMismatchError(
@@ -69,8 +69,10 @@ def parse_daily_all(raw_text: str) -> list[dict]:
 
     rows = []
     for rec in payload:
+        rec_date = parse_roc_date(str(rec.get("Date", ""))) or fallback_date
         rows.append({
             "stock_id": rec["SecuritiesCompanyCode"],
+            "date": rec_date.isoformat(),
             "name": rec.get("CompanyName"),
             "open": to_float(rec.get("Open")),
             "high": to_float(rec.get("High")),
@@ -149,11 +151,17 @@ def _pick(rec_normed: dict, target: str, source: str):
         raise SchemaMismatchError(source, expected={target}, actual=set(rec_normed)) from None
 
 
-def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:
+def parse_institutional(raw_text: str, fallback_date: dt.date) -> list[dict]:
     """/tpex_3insti_daily_trading per swagger schema. Foreign net uses the
     "(Foreign Dealers excluded)" variant to mirror TWSE T86's
     外陸資(不含外資自營商) convention. Values are 股 (shares); the loader
-    converts to 張."""
+    converts to 張.
+
+    The endpoint is a latest-day snapshot with each record carrying its own
+    ROC `Date`; rows are stamped with that embedded date (fallback_date only
+    when it's missing/unparsable) so callers can never mislabel the data —
+    the original backfill loop would otherwise have stamped the same latest
+    snapshot onto every historical date."""
     payload = json.loads(raw_text)
     if not isinstance(payload, list):
         raise SchemaMismatchError(
@@ -166,6 +174,7 @@ def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:
         stock_id = str(_pick(rec_normed, "SecuritiesCompanyCode", "tpex_institutional")).strip()
         if not stock_id:
             continue
+        rec_date = parse_roc_date(str(rec_normed.get("Date", ""))) or fallback_date
         foreign = _pick(
             rec_normed,
             "Foreign Investors include Mainland Area Investors (Foreign Dealers excluded)-Difference",
@@ -175,7 +184,7 @@ def parse_institutional(raw_text: str, date: dt.date) -> list[dict]:
         dealer = _pick(rec_normed, "Dealers-Difference", "tpex_institutional")
         rows.append({
             "stock_id": stock_id,
-            "date": date.isoformat(),
+            "date": rec_date.isoformat(),
             "foreign_net": to_int(foreign),
             "trust_net": to_int(trust),
             "dealer_net": to_int(dealer),

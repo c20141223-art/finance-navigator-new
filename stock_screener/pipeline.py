@@ -63,25 +63,22 @@ def update_latest_daily_price(
     twse_rows = _run_source(
         conn, date, "twse_daily_all",
         lambda: _require_ok(twse.fetch_daily_all_raw(client, config), "twse_daily_all",
-                             lambda outcome: twse.parse_daily_all(outcome.text)),
+                             lambda outcome: twse.parse_daily_all(outcome.text, date)),
     )
-    for r in twse_rows:
-        r["date"] = date.isoformat()
     loaders.upsert_daily_price(conn, twse_rows, source="twse")
 
     tpex_rows = _run_source(
         conn, date, "tpex_daily_all",
         lambda: _require_ok(tpex.fetch_daily_all_raw(client, config), "tpex_daily_all",
-                             lambda outcome: tpex.parse_daily_all(outcome.text)),
+                             lambda outcome: tpex.parse_daily_all(outcome.text, date)),
     )
-    for r in tpex_rows:
-        r["date"] = date.isoformat()
     loaders.upsert_daily_price(conn, tpex_rows, source="tpex")
 
 
-def update_institutional(
+def update_institutional_twse(
     conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> None:
+    """T86 takes a date parameter, so historical days are fetchable."""
     twse_rows = _run_source(
         conn, date, "twse_institutional",
         lambda: _require_ok(twse.fetch_institutional_raw(client, config, date), "twse_institutional",
@@ -89,6 +86,14 @@ def update_institutional(
     )
     loaders.upsert_institutional(conn, twse_rows, source="twse")
 
+
+def update_institutional_tpex(
+    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
+) -> None:
+    """The TPEx openapi report is a latest-day snapshot only (no history
+    endpoint); rows carry their own embedded dates, so calling this can
+    never mislabel data — but backfill calls it exactly once, since 90
+    identical snapshot fetches would return the same rows."""
     tpex_rows = _run_source(
         conn, date, "tpex_institutional",
         lambda: _require_ok(tpex.fetch_institutional_raw(client, config), "tpex_institutional",
@@ -97,7 +102,14 @@ def update_institutional(
     loaders.upsert_institutional(conn, tpex_rows, source="tpex")
 
 
-def update_risk_list(
+def update_institutional(
+    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
+) -> None:
+    update_institutional_twse(conn, client, config, date)
+    update_institutional_tpex(conn, client, config, date)
+
+
+def update_risk_list_twse(
     conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> None:
     disposition_rows = _run_source(
@@ -107,6 +119,12 @@ def update_risk_list(
     )
     loaders.upsert_risk_list(conn, disposition_rows, source="twse")
 
+
+def update_risk_list_tpex(
+    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
+) -> None:
+    """Current-snapshot endpoint (disposition periods filtered against
+    `date`); one fetch covers the whole backfill window."""
     tpex_disposition_rows = _run_source(
         conn, date, "tpex_disposition",
         lambda: _require_ok(
@@ -115,6 +133,13 @@ def update_risk_list(
         ),
     )
     loaders.upsert_risk_list(conn, tpex_disposition_rows, source="tpex")
+
+
+def update_risk_list(
+    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
+) -> None:
+    update_risk_list_twse(conn, client, config, date)
+    update_risk_list_tpex(conn, client, config, date)
 
 
 def update_ex_rights(
@@ -188,14 +213,31 @@ def backfill(
     end_date: dt.date | None = None,
     n_days: int | None = None,
 ) -> None:
+    """Historical backfill. Per-day fetches are limited to the endpoints
+    that genuinely take a date parameter (MI_INDEX, TPEx quotes, T86, TWSE
+    disposition); snapshot-style endpoints (ex-rights pre-announcements,
+    TPEx disposition/institutional, monthly revenue, ISIN meta) are hit
+    exactly once — they can't return history, and hammering them per-day
+    would only multiply load on the exchanges' WAF-guarded hosts.
+
+    Known data limitation, documented rather than papered over: TPEx has
+    no historical institutional endpoint, so 上櫃 chips factors only
+    accumulate from daily runs going forward; right after a fresh backfill
+    they reflect a single day of data."""
     end_date = end_date or dt.date.today()
     n_days = n_days or config.data.min_backfill_trading_days
+
     update_stock_meta(conn, client, config, end_date)
+    update_monthly_revenue(conn, client, config, end_date)
+    update_ex_rights(conn, client, config, end_date)
+    update_risk_list_tpex(conn, client, config, end_date)
+    update_institutional_tpex(conn, client, config, end_date)
+
     for date in trading_day_candidates(end_date, n_days):
         update_daily_price_for_date(conn, client, config, date)
-        update_institutional(conn, client, config, date)
-        update_ex_rights(conn, client, config, date)
-        update_risk_list(conn, client, config, date)
+        update_institutional_twse(conn, client, config, date)
+        update_risk_list_twse(conn, client, config, date)
+
     loaders.update_active_flags(conn, end_date, config.data.inactive_after_missing_days)
 
 
