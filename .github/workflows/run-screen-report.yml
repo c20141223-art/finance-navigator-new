@@ -1,0 +1,61 @@
+name: Run screen report
+
+# Phase 2 acceptance: backfill ~90 trading days on a GitHub-hosted runner
+# (which can reach TWSE/TPEx), run the momentum screen, and commit a
+# markdown report (Top 30 + control group, every factor's raw value and
+# score, plus the exact momentum.yaml used) back to the feature branch for
+# independent manual re-verification.
+#
+# Pacing: the backfill loop sends ~3 requests per trading day to
+# www.twse.com.tw; --min-interval 3.0 keeps same-host spacing at 3s+
+# (double the daily job's 1.5s), well under the cadence that tripped the
+# WAF in verification round one. Expect the backfill step to take ~25-35
+# minutes.
+#
+# This file lives on main (workflow_dispatch only appears in the Actions
+# UI for default-branch workflows) but always operates on TARGET_BRANCH.
+
+on:
+  workflow_dispatch:
+
+env:
+  TARGET_BRANCH: claude/taiwan-stock-screening-phase1-3eng2j
+
+permissions:
+  contents: write
+
+jobs:
+  screen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-stock-screener.txt
+
+      - name: Backfill history (conservative pacing)
+        run: python scripts/run_backfill.py --min-interval 3.0
+
+      - name: Run screen and export markdown report
+        run: python scripts/export_screen_report.py
+
+      - name: Commit report
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add docs/screen_reports/
+          if git diff --cached --quiet; then
+            echo "No report changes, nothing to commit."
+          else
+            git commit -m "Add screen report from acceptance run"
+            git push origin HEAD:${{ env.TARGET_BRANCH }}
+          fi
