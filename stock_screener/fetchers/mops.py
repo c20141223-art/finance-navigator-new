@@ -26,6 +26,15 @@ spec's 10th-12th run window would be missed for that month, since next
 month's snapshot rolls over to the new 資料年月. Upserts are idempotent,
 so running this fetch on more days (even daily — it's two cheap requests)
 closes the gap; the scheduling decision belongs to Phase 4 wiring.
+
+History limitation (checked, not guessed): NEITHER openapi catalog
+contains any parameterized endpoint at all — both services are snapshot-
+only by design, so historical months cannot be backfilled from any
+verified source. monthly_revenue therefore accumulates one month per
+monthly cycle of the daily schedule; factors needing 3 consecutive
+months (revenue_trend_3m) only become meaningful ~3 months after the
+system goes live. Until then the fundamental dimension effectively
+degenerates to revenue_yoy alone.
 """
 
 from __future__ import annotations

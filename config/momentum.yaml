@@ -29,7 +29,10 @@ dimensions:
           - {gt: 10, score: 60}
           - {gt: 0, score: 30}
           - {else: 0}
-      # F2 營收趨勢：最近 3 個「連續」月份的 YoY 逐月走高（Boolean）
+      # F2 營收趨勢：最近 3 個「連續」月份的 YoY 逐月走高（Boolean）。
+      # 注意：月營收來源為快照端點、無歷史可回補（兩交易所 openapi 目錄
+      # 皆無帶參數端點），此因子需系統上線每日排程累積約 3 個月才開始
+      # 有意義；在此之前恆為 0，基本面分項實質上只剩 revenue_yoy 單因子。
       revenue_trend_3m:
         score_if_true: 100
 

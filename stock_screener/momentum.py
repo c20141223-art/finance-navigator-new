@@ -25,6 +25,15 @@ Design decisions that matter for manual re-verification (驗收方式是人工
   spec 1.4); revenue_trend_3m requires the 3 newest months to be
   consecutive calendar months AND strictly increasing YoY.
 
+- Ranking tie-break: rows sort by total score descending, then stock_id
+  ascending (lexicographic). The secondary key exists ONLY to make ranks
+  deterministic and reproducible across runs — it carries no informational
+  meaning, so among equal totals the rank ordering has no discriminative
+  value. This matters in practice: coarse bins + two-factor dimension caps
+  make full marks reachable, so clusters of tied totals near the top are
+  an expected property of the current parameters (spec discipline: no
+  parameter tweaks without >= 30 trigger cases of evidence).
+
 Persistence is idempotent per (date, profile): re-running a screen for the
 same date replaces its trigger rows.
 """
