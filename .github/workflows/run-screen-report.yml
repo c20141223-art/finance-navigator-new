@@ -48,6 +48,13 @@ jobs:
       - name: Run screen and export markdown report
         run: python scripts/export_screen_report.py
 
+      - name: Run reversal radar and export markdown report
+        # Phase 3 acceptance: reuse the same backfilled DB to scan the whole
+        # market for reversal triggers. The headline is the trigger COUNT —
+        # a sane single-digit-to-teens count means the conditions are tight;
+        # dozens/day would mean they are too loose. Writes reversal_{date}.md.
+        run: python scripts/export_reversal_report.py
+
       - name: Commit report
         run: |
           git config user.name "github-actions[bot]"

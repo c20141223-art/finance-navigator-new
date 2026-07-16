@@ -1,0 +1,56 @@
+# 反轉雷達 profile（規格書第 4 節）。與順勢評分完全分離。
+# 所有門檻集中於此，程式碼不含硬編碼參數。反轉為高風險清單，非買賣建議。
+#
+# 時間序列邏輯：跌深(階段0) → 止跌打底(階段1) → 轉強觸發(階段2，三選二)。
+# 觸發後由單一狀態機追蹤（初次觸發 → 確認中 → 已確認 / 訊號失敗）。
+# 所有價格計算使用還原股價（與 stock_screener.adjust 一致）。
+
+# ── 階段 0：資格（Boolean）─────────────────────────────────────────
+qualify:
+  # 通過第 2 節排雷濾網（流動性/價格下限/排雷名單/資料完整性/普通股），
+  # 沿用 momentum.yaml 的 filters；此處不重複定義。
+  drawdown_from_60d_high: 0.25   # 收盤距 60 日最高點（還原價）回檔 >= 25%
+
+# ── 階段 1：止跌打底（Boolean）─────────────────────────────────────
+base_building:
+  no_new_low_days: 10            # 近 10 日未再創波段新低
+  volume_shrink_ratio: 0.6       # 近 10 日均量 < 下跌段均量 × 0.6
+                                 # 下跌段 = 60日高點日 至 波段低點日
+
+# ── 階段 2：轉強觸發（三選二，觸發日即入榜日）──────────────────────
+trigger:
+  require_n_of: 2                # 三個訊號滿足其中幾個才觸發
+  signals:
+    # S1 帶量突破：單日量 > 20日均量 × vol_multiple 且 收盤收復 reclaim_ma
+    volume_breakout:
+      vol_multiple: 1.5
+      reclaim_ma: 20
+    # S2 MACD：柱狀體(OSC)連續收斂 >= converge_days 日，或由負翻正
+    macd_converge:
+      fast: 12
+      slow: 26
+      signal: 9
+      converge_days: 3
+    # S3 RSI：fast 日 RSI 上穿 slow 日 RSI，且 fast 日 RSI 自 exit_zone
+    # 以下低檔區脫離
+    rsi_cross:
+      fast: 5
+      slow: 10
+      exit_zone: 30
+  # K 棒品質檢查（觸發日當日過濾假突破）：
+  # (收盤 − 最低) ÷ (最高 − 最低) > candle_quality_min，否則不觸發
+  # （過濾長上影線的盤中假突破）
+  candle_quality_min: 0.6
+
+# ── 狀態機（觸發後追蹤，規格書 4.4）────────────────────────────────
+confirm:
+  days: 3                        # 確認觀察窗（Day 2-3）
+  hold_above_ma: 20             # 確認條件：收盤持續站穩 20MA
+  volume_retreat_ratio: 0.33     # 量能退回：Day2-3 量縮至觸發日 1/3 以下
+                                 # → 狀態退回「觀察」
+  # 失效判定價 = 觸發日 K 棒最低點（還原價）。收盤跌破 → 訊號失敗。
+
+output:
+  # 反轉對照組：只差一個條件未過者（規格書 5.2）。此為 config 開關，
+  # 對照組判定邏輯見 stock_screener/reversal.py。
+  control_group: true
