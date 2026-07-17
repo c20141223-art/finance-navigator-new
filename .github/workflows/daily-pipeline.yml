@@ -1,0 +1,98 @@
+name: Daily pipeline (screen + reversal + email)
+
+# 每日完整流程（規格書 1.5 / 第 6 節）：日增量更新 → 順勢篩選 → 反轉偵測
+# → 狀態機推進 → T+5/20/60 報酬回填 → 觀察池雷達 → 寄送 HTML email。
+# 每月 10–20 日的每次執行另跑月營收更新（scripts/run_daily_pipeline.py 內部
+# 依日期判斷；每日抓、upsert 冪等）。
+#
+# ── 觸發方式：workflow_dispatch（由外部 cron-job.org 於台灣時間 17:30 觸發）
+# 「二擇一」的理由（規格書 1.5）：GitHub 內建 schedule cron 是 best-effort，
+# 高負載時常延遲 5–30 分鐘、甚至整批略過，無法穩定命中「收盤後 17:30」這種
+# 需要準點的時段。姊妹專案 stock-report 已用 cron-job.org 呼叫 GitHub REST
+# API（POST /actions/workflows/<id>/dispatches）準點觸發數月穩定，故本專案
+# 沿用同一機制：這裡只保留 workflow_dispatch，由 cron-job.org 定時打 API。
+# 設定步驟見 README「Phase 4 排程與憑證設定」。
+# （若日後想要一個粗略的保底，可自行取消下方 schedule 註解；UTC 09:30 ≈
+# 台灣 17:30，但請理解它不保證準點。）
+on:
+  workflow_dispatch:
+  # schedule:
+  #   - cron: "30 9 * * 1-5"   # 保底用；UTC，非準點，預設停用
+
+env:
+  TARGET_BRANCH: claude/taiwan-stock-screening-phase1-3eng2j
+
+permissions:
+  contents: read
+
+concurrency:
+  group: daily-pipeline
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout target branch
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-stock-screener.txt
+
+      # Rolling cache: restore the newest prior market.db, always save a fresh
+      # copy under a run-unique key so the accumulated history (prices, triggers,
+      # 反轉狀態、T+N 報酬) persists across daily runs without committing the
+      # binary DB into git (data/market.db is .gitignored by design).
+      - name: Restore market DB cache
+        id: db-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/market.db
+            data/market.db-wal
+            data/market.db-shm
+          key: market-db-${{ github.run_id }}
+          restore-keys: |
+            market-db-
+
+      - name: Backfill history if DB is absent (first run only)
+        run: |
+          if [ ! -f data/market.db ]; then
+            echo "No cached DB found — running initial backfill (~25-35 min)."
+            python scripts/run_backfill.py --min-interval 3.0
+          else
+            echo "Cached DB restored; skipping backfill."
+          fi
+
+      - name: Run daily pipeline and send email
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASSWORD: ${{ secrets.GMAIL_PASSWORD }}
+          MAIL_TO: ${{ secrets.MAIL_TO }}
+        run: python scripts/run_daily_pipeline.py --save-html email_preview.html
+
+      - name: Upload email HTML preview (artifact for manual acceptance)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: email-preview
+          path: email_preview.html
+          if-no-files-found: ignore
+
+      - name: Save market DB cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/market.db
+            data/market.db-wal
+            data/market.db-shm
+          key: market-db-${{ github.run_id }}
