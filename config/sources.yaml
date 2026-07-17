@@ -44,6 +44,13 @@ sources:
   # 上櫃全市場「指定日期」收盤行情（回補歷史用）。d 參數為民國年/月/日
   tpex_daily_history: "https://www.tpex.org.tw/web/stock/aftertrading/otc_quotes_no1430/stk_wn1430_result.php?l=zh-tw&d={roc_date}&se=EW"
 
+  # 發行量加權股價指數（TAIEX）每日收盤，MI_5MINS_HIST 回傳 date 所在整月
+  # 的每日 開/高/低/收 指數（tables 包裝格式，每列自帶日期）。回補時逐月
+  # 呼叫、每日更新抓當月即可（rows 自帶日期，冪等 upsert）。Phase 4 新增，
+  # 供大盤狀態標記（加權指數 vs 60MA、60MA 方向）；驗證循 Phase 1 慣例於
+  # GitHub Actions 真實請求核對，失敗則記 fetch_log 並在報告標注、不中斷。
+  twse_index_history: "https://www.twse.com.tw/rwd/zh/TAIEX/MI_5MINS_HIST?date={date}&response=json"
+
   # 上市三大法人買賣超日報（T86，整批，date 為西元 YYYYMMDD）
   twse_institutional: "https://www.twse.com.tw/rwd/zh/fund/T86?date={date}&selectType=ALL&response=json"
 

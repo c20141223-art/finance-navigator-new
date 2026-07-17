@@ -45,6 +45,28 @@ def upsert_daily_price(conn: sqlite3.Connection, rows: list[dict], source: str) 
     return len(payload)
 
 
+def upsert_index_price(conn: sqlite3.Connection, rows: list[dict], source: str) -> int:
+    """rows: dicts with index_id, date, open/high/low, close. Index points are
+    not converted (no 張 conversion — this is a price index, not a volume)."""
+    payload = [
+        (r["index_id"], r["date"], r.get("open"), r.get("high"),
+         r.get("low"), r["close"], source)
+        for r in rows
+        if r.get("close") is not None
+    ]
+    conn.executemany(
+        """
+        INSERT INTO index_price (index_id, date, open, high, low, close, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(index_id, date) DO UPDATE SET
+            open = excluded.open, high = excluded.high, low = excluded.low,
+            close = excluded.close, source = excluded.source
+        """,
+        payload,
+    )
+    return len(payload)
+
+
 def upsert_institutional(conn: sqlite3.Connection, rows: list[dict], source: str) -> int:
     """Fetcher rows carry 股 (shares, per live T86/TPEx samples); stored as
     張 per spec 1.2 — same boundary conversion as upsert_daily_price."""

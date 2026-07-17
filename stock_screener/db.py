@@ -41,6 +41,21 @@ CREATE TABLE IF NOT EXISTS daily_price (
 );
 CREATE INDEX IF NOT EXISTS idx_daily_price_date ON daily_price(date);
 
+-- 大盤指數日線（發行量加權股價指數 TAIEX 等），用於大盤狀態標記
+-- （加權指數 vs 60MA、60MA 方向）。Phase 2 於 momentum.compute_market_regime
+-- 標注為缺項，Phase 4 補上資料來源。與個股 daily_price 分開存放。
+CREATE TABLE IF NOT EXISTS index_price (
+    index_id    TEXT    NOT NULL,   -- 'TAIEX'（發行量加權股價指數）
+    date        TEXT    NOT NULL,   -- ISO 'YYYY-MM-DD'
+    open        REAL,
+    high        REAL,
+    low         REAL,
+    close       REAL    NOT NULL,
+    source      TEXT    NOT NULL,
+    PRIMARY KEY (index_id, date)
+);
+CREATE INDEX IF NOT EXISTS idx_index_price_date ON index_price(date);
+
 CREATE TABLE IF NOT EXISTS institutional (
     stock_id    TEXT    NOT NULL,
     date        TEXT    NOT NULL,

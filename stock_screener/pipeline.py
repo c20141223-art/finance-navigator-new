@@ -75,6 +75,21 @@ def update_latest_daily_price(
     loaders.upsert_daily_price(conn, tpex_rows, source="tpex")
 
 
+def update_index_price(
+    conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
+) -> None:
+    """發行量加權股價指數 (TAIEX) for the month containing `date`. One call
+    covers a whole month (rows carry their own dates), so the daily job hits
+    it once for the current month and backfill hits it once per calendar
+    month spanned — see backfill()."""
+    rows = _run_source(
+        conn, date, "twse_index_history",
+        lambda: _require_ok(twse.fetch_index_history_raw(client, config, date), "twse_index_history",
+                             lambda outcome: twse.parse_index_history(outcome.text, date)),
+    )
+    loaders.upsert_index_price(conn, rows, source="twse")
+
+
 def update_institutional_twse(
     conn: sqlite3.Connection, client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> None:
@@ -200,6 +215,7 @@ def daily_update(
 ) -> None:
     date = date or dt.date.today()
     update_latest_daily_price(conn, client, config, date)
+    update_index_price(conn, client, config, date)
     update_institutional(conn, client, config, date)
     update_risk_list(conn, client, config, date)
     update_ex_rights(conn, client, config, date)
@@ -233,7 +249,18 @@ def backfill(
     update_risk_list_tpex(conn, client, config, end_date)
     update_institutional_tpex(conn, client, config, end_date)
 
-    for date in trading_day_candidates(end_date, n_days):
+    candidate_days = trading_day_candidates(end_date, n_days)
+
+    # TAIEX index: one MI_5MINS_HIST call returns a whole month, so fetch once
+    # per distinct calendar month spanned rather than per day.
+    seen_months: set[tuple[int, int]] = set()
+    for date in candidate_days:
+        key = (date.year, date.month)
+        if key not in seen_months:
+            seen_months.add(key)
+            update_index_price(conn, client, config, date)
+
+    for date in candidate_days:
         update_daily_price_for_date(conn, client, config, date)
         update_institutional_twse(conn, client, config, date)
         update_risk_list_twse(conn, client, config, date)

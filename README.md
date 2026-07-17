@@ -59,31 +59,126 @@ python scripts/verify_api_samples.py
 python scripts/run_screen.py --date 2026-07-14
 ```
 
+### Phase 3：反轉雷達（已驗收結案）
+
+跌深 → 止跌打底 → 轉強觸發的三階段時間序列偵測，與順勢評分完全分離、
+屬高風險清單。全參數集中於 `config/reversal.yaml`；RSI 用威爾德平滑、
+MACD 12-26-9（`stock_screener/indicators.py`）。觸發後由單一狀態機追蹤
+（初次觸發 → 確認中 → 已確認／訊號失敗，失效判定價＝觸發日 K 棒最低點）。
+落庫 `triggers`（profile=reversal），對照組＝只差一個條件未過者。詳見
+`stock_screener/reversal.py` 模組 docstring。
+
+### Phase 4：輸出整合＋每日排程（規格書 1.5／第 6 節）
+
+每日完整流程一鍵串接並寄出 HTML email 報告。
+
+- `scripts/run_daily_pipeline.py`：日增量更新 → 順勢篩選 → 反轉偵測 →
+  狀態機推進 → T+5/20/60 報酬回填 → 觀察池雷達 → 組信 → 寄送。每個環節
+  獨立 try/except，失敗記 `fetch_log` 並於信中「本日缺料／環節失敗」區塊
+  標注，但不中斷後續（規格書第 9 節）。每月 10–20 日另跑月營收更新
+  （每日抓、upsert 冪等）。
+- `stock_screener/report_email.py`：四區塊 email——① 大盤狀態（加權指數
+  vs 60MA、60MA 方向、多頭排列佔比，僅標注不計分）② 順勢 Top 30（分項
+  得分＋新進榜／跌出榜醒目摘要）③ 反轉雷達（狀態機清單＋失效判定價＋
+  高風險警語）④ 觀察池雷達（客觀分數＋排名變化＋連續墊底警示）。單欄
+  640px、行動裝置可讀。
+- `stock_screener/market_status.py`：補上 Phase 2 掛帳的加權指數缺項，
+  讀 `index_price`（新增 TAIEX 日線來源 `twse_index_history`）算指數 vs
+  60MA 與 60MA 方向。
+- `stock_screener/returns.py`：對每筆 trigger 於足夠交易日後回填
+  T+5/20/60 報酬與 MFE/MAE（還原價、以百分比存、填一次冪等）。
+- `stock_screener/watchlist.py` + `config/watchlist.json`：觀察池只呈現
+  客觀分數與排名變化，不加分、不進選股母體。先在 `watchlist.json` 的
+  `stocks` 填入代號。
+- `stock_screener/emailer.py`：Gmail SMTP 寄件，憑證只走環境變數、無備援
+  值、缺 secret 明確報錯。
+
+本地乾跑（不寄信、輸出 HTML 預覽檔）：
+
+```bash
+python scripts/run_daily_pipeline.py --no-email --save-html /tmp/preview.html
+```
+
+#### Phase 4 排程與憑證設定
+
+**1. 新增 GitHub Secrets（per-repo，不會從 stock-report 自動共享）。**
+到本 repo 的 **Settings → Secrets and variables → Actions → New repository
+secret**，新增三個（名稱需完全一致）：
+
+| Secret | 內容 |
+|:--|:--|
+| `GMAIL_USER` | 寄件 Gmail 帳號（完整 email） |
+| `GMAIL_PASSWORD` | 該帳號的 Google **應用程式密碼**（非登入密碼；於 Google 帳戶 → 安全性 → 兩步驟驗證 → 應用程式密碼產生） |
+| `MAIL_TO` | 收件人 email（可逗號分隔多個） |
+
+程式端固定讀這三個環境變數、無任何備援值；缺任一者 `run_daily_pipeline`
+會在寄信環節明確報錯（並記入 `fetch_log`），不會靜默略過。
+
+**2. 手動驗收（規格書 5 的第一步）。** 把 `daily-pipeline.yml` 合併到
+`main` 後，到 **Actions → Daily pipeline → Run workflow** 手動觸發一次
+（首次無快取會先回補約 25–35 分鐘）。確認收到 email、四區塊正常後，再啟用
+每日排程。工作流程也會把 email HTML 存成 `email-preview` artifact 供核對。
+
+**3. 每日準點觸發（cron-job.org → workflow_dispatch）。** 選用外部觸發
+而非 GitHub 內建 `schedule` 的理由：內建 cron 為 best-effort，高負載時常
+延遲 5–30 分鐘甚至略過，無法穩定命中「收盤後 17:30」。於
+[cron-job.org](https://cron-job.org) 建立一個排程，台灣時間每交易日 17:30
+對以下 REST API 發 POST（需一顆有 `actions:write` 權限的 GitHub PAT）：
+
+```
+POST https://api.github.com/repos/c20141223-art/finance-navigator-new/actions/workflows/daily-pipeline.yml/dispatches
+Authorization: Bearer <PAT>
+Accept: application/vnd.github+json
+Body: {"ref": "main"}
+```
+
+（`daily-pipeline.yml` 會 checkout 開發分支執行；工作流程本體需在 `main`
+上，`workflow_dispatch` 才會出現在 Actions UI 且可被 API 呼叫。）DB 以
+GitHub Actions rolling cache 持久化累積歷史，不將二進位 DB 進 git。
+
 ### 目錄結構
 
 ```
 config/sources.yaml       資料源端點與 rate limit 設定
 config/momentum.yaml      順勢評分門檻/權重（Phase 2）
+config/reversal.yaml      反轉雷達三階段參數（Phase 3）
+config/watchlist.json     觀察池代號清單（Phase 4，使用者填寫）
 stock_screener/
-  db.py                   SQLite schema (daily_price / institutional /
-                           monthly_revenue / risk_list / stock_meta /
-                           corporate_action / triggers / config_versions /
-                           fetch_log)
+  db.py                   SQLite schema (daily_price / index_price /
+                           institutional / monthly_revenue / risk_list /
+                           stock_meta / corporate_action / triggers /
+                           config_versions / fetch_log)
   config.py                config/sources.yaml 讀取
   http_client.py           rate-limited + retry 的 HTTP client
   adjust.py                還原股價（除權息回推調整係數）計算
   loaders.py                parse 結果 -> SQLite 的 upsert 邏輯
   pipeline.py               每日更新 / 回補流程，單一資料源失敗不影響其他來源
   fetchers/                各資料源的 fetch + parse
+  scoring.py               config 驅動計分器（Phase 2）
+  momentum.py              排雷濾網＋順勢評分引擎（Phase 2）
+  indicators.py            威爾德 RSI / MACD 12-26-9（Phase 3）
+  reversal.py              反轉雷達＋狀態機（Phase 3）
+  market_status.py         大盤狀態標記（加權指數 vs 60MA 等，Phase 4）
+  returns.py               T+5/20/60 報酬與 MFE/MAE 回填（Phase 4）
+  watchlist.py             觀察池雷達（客觀分數＋排名變化，Phase 4）
+  report_email.py          四區塊 HTML email 組裝（Phase 4）
+  emailer.py               Gmail SMTP 寄件，憑證只走環境變數（Phase 4）
 scripts/
   run_backfill.py           初始回補 >= 90 個交易日
-  run_daily_update.py       每日增量更新（供 17:30 排程呼叫）
-  run_monthly_revenue.py    每月 10-12 日執行的月營收更新
+  run_daily_update.py       每日增量更新（僅抓取，不含篩選/寄信）
+  run_daily_pipeline.py     每日完整流程＋寄信（供 17:30 排程呼叫，Phase 4）
+  run_screen.py             跑單日順勢篩選並列印排名表
+  run_monthly_revenue.py    月營收更新（每月 10-20 日）
+  export_screen_report.py   順勢篩選 markdown 報告
+  export_reversal_report.py 反轉雷達 markdown 報告
   verify_api_samples.py     在有網路的環境執行，抓取真實回應存入
                              docs/api_samples/
+.github/workflows/
+  daily-pipeline.yml        每日完整流程（workflow_dispatch，Phase 4）
+  run-screen-report.yml     順勢／反轉 markdown 報告驗收工作流程
 docs/api_samples/          API 真實回應樣本與驗證記錄（三輪已完成）
-tests/                      pytest 單元測試（涵蓋 schema 驗證、還原股價
-                             計算、rate limiter、pipeline 容錯）
+tests/                      pytest 單元測試（99 項；涵蓋 schema、還原股價、
+                             指標、反轉、報酬回填、觀察池、email 組裝等）
 ```
 
 ### 還原股價設計

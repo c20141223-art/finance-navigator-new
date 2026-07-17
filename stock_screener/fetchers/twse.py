@@ -132,6 +132,72 @@ def parse_daily_history(raw_text: str, date: dt.date) -> list[dict]:
     return rows
 
 
+def fetch_index_history_raw(
+    client: RateLimitedClient, config: SourcesConfig, date: dt.date
+) -> RequestOutcome:
+    """MI_5MINS_HIST: 發行量加權股價指數 for the month containing `date`."""
+    url = config.url("twse_index_history").format(date=to_yyyymmdd(date))
+    return client.get(url, headers=NOCACHE_HEADERS, params=_cache_bust())
+
+
+def parse_index_history(raw_text: str, fallback_date: dt.date) -> list[dict]:
+    """Daily TAIEX 開/高/低/收 for a whole month. Each row carries its own
+    ROC 日期 (fallback_date only if unparseable). Column headers are matched
+    by keyword (開盤/最高/最低/收盤 指數) so a minor rewording doesn't break
+    parsing — an actual mismatch raises via find_column."""
+    payload = json.loads(raw_text)
+    if isinstance(payload, dict) and payload.get("stat") not in ("OK", "ok", None) \
+            and "tables" not in payload and "fields" not in payload:
+        return []
+
+    fields, data = _find_index_table(payload)
+    if not fields or not data:
+        return []
+
+    idx_date = find_column(fields, ("日期",), source="twse_index_history")
+    idx_open = find_column(fields, ("開盤",), source="twse_index_history")
+    idx_high = find_column(fields, ("最高",), source="twse_index_history")
+    idx_low = find_column(fields, ("最低",), source="twse_index_history")
+    idx_close = find_column(fields, ("收盤",), source="twse_index_history")
+
+    rows = []
+    for row in data:
+        rec_date = parse_roc_date(str(row[idx_date])) or fallback_date
+        close = to_float(row[idx_close])
+        if close is None:
+            continue
+        rows.append({
+            "index_id": "TAIEX",
+            "date": rec_date.isoformat(),
+            "open": to_float(row[idx_open]),
+            "high": to_float(row[idx_high]),
+            "low": to_float(row[idx_low]),
+            "close": close,
+        })
+    return rows
+
+
+def _find_index_table(payload) -> tuple[list, list]:
+    """Locate the daily-index OHLC table. The index endpoint's rows have a
+    日期 column and a 收盤指數 column (no 證券代號), so find_price_table's
+    stock-oriented match doesn't apply — search for the index shape here."""
+    candidates: list[tuple[list, list]] = []
+    if isinstance(payload, dict):
+        for table in payload.get("tables") or []:
+            candidates.append((table.get("fields") or [], table.get("data") or []))
+        if payload.get("fields") and payload.get("data"):
+            candidates.append((payload["fields"], payload["data"]))
+        n = 1
+        while f"fields{n}" in payload:
+            candidates.append((payload.get(f"fields{n}") or [], payload.get(f"data{n}") or []))
+            n += 1
+    for fields, data in candidates:
+        normalized = ["".join(str(f).split()) for f in fields]
+        if any("日期" in f for f in normalized) and any("收盤" in f for f in normalized):
+            return fields, data
+    return [], []
+
+
 def fetch_institutional_raw(
     client: RateLimitedClient, config: SourcesConfig, date: dt.date
 ) -> RequestOutcome:

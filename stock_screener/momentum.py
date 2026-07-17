@@ -321,7 +321,101 @@ def run_screen(conn: sqlite3.Connection, mcfg: MomentumConfig,
     )
 
 
+# ── scoring for an explicit stock set (watchlist radar, spec 6.4) ────────
+
+def score_selected(conn: sqlite3.Connection, mcfg: MomentumConfig,
+                   date: dt.date, stock_ids: list[str]) -> dict[str, dict]:
+    """Compute the objective momentum score for a specific set of stocks,
+    regardless of whether they pass the 排雷 filters — the watchlist shows
+    the user's own tracked names, not a filtered universe. Returns
+    stock_id -> {score: StockScore | None, filter_ok: bool, reason: str|None,
+    insufficient: bool}. `insufficient` means < min_history_days of data, so
+    factors like 60MA can't be computed and no score is produced."""
+    window = int(mcfg.filters["min_history_days"])
+    dates = _market_trading_dates(conn, date.isoformat(), window)
+    if not dates:
+        return {sid: {"score": None, "filter_ok": False, "reason": "資料庫無資料",
+                      "insufficient": True} for sid in stock_ids}
+
+    frames = _load_frames(conn, dates)
+    names = dict(zip(frames["meta"]["stock_id"], frames["meta"]["name"]))
+    inst_grouped: dict[str, dict] = {}
+    for stock_id, g in frames["institutional"].groupby("stock_id"):
+        inst_grouped[stock_id] = {r.date: (r.foreign_net, r.trust_net) for r in g.itertuples()}
+    revenue_grouped = {
+        stock_id: g.sort_values("year_month", ascending=False).reset_index(drop=True)
+        for stock_id, g in frames["revenue"].groupby("stock_id")
+    }
+    actions_grouped = {sid: g for sid, g in frames["actions"].groupby("stock_id")}
+    empty_actions = frames["actions"].iloc[0:0]
+    prices_grouped = {sid: g for sid, g in frames["prices"].groupby("stock_id")}
+
+    out: dict[str, dict] = {}
+    for sid in stock_ids:
+        rows = prices_grouped.get(sid)
+        if rows is None or len(rows) < window:
+            out[sid] = {"score": None, "filter_ok": False,
+                        "reason": f"歷史不足（{0 if rows is None else len(rows)}/{window} 交易日）",
+                        "insufficient": True}
+            continue
+        rows = rows.sort_values("date").reset_index(drop=True)
+        filter_ok, reason = apply_filters(sid, rows, dates, frames["risk"], mcfg.filters)
+        adjusted = _adjusted_close(rows, actions_grouped.get(sid, empty_actions))
+        raw_factors = compute_factors(
+            sid, rows, adjusted, inst_grouped.get(sid, {}),
+            revenue_grouped.get(sid, frames["revenue"].iloc[0:0]), dates,
+        )
+        dim_scores, detail, total = {}, {}, 0.0
+        for dim in mcfg.dimensions:
+            dim_score, dim_detail = score_dimension(dim, raw_factors)
+            dim_scores[dim.name] = dim_score
+            detail[dim.name] = dim_detail
+            total += dim.weight * dim_score
+        out[sid] = {
+            "score": StockScore(
+                stock_id=sid, name=names.get(sid), total=round(total, 4),
+                dimension_scores=dim_scores, factor_detail=detail),
+            "filter_ok": filter_ok, "reason": reason, "insufficient": False,
+        }
+    return out
+
+
 # ── persistence (spec section 5) ────────────────────────────────────────
+
+def topn_variance(conn: sqlite3.Connection, result: ScreenResult,
+                  top_n: int) -> tuple[list, list]:
+    """Compare today's Top-N against the most recent PRIOR momentum snapshot
+    stored in `triggers`. Returns (new_entrants, dropped) where new_entrants
+    is the list[StockScore] of today's Top-N stocks absent from the prior
+    Top-N, and dropped is [{stock_id, name, prev_rank}] for prior Top-N
+    stocks not in today's Top-N. Call BEFORE persisting today's rows so the
+    prior date is genuinely the previous run."""
+    prior = conn.execute(
+        "SELECT DISTINCT date FROM triggers WHERE profile = ? AND date < ? "
+        "ORDER BY date DESC LIMIT 1",
+        (PROFILE, result.date),
+    ).fetchone()
+    if not prior:
+        return [], []
+    prev_rows = conn.execute(
+        "SELECT stock_id, rank FROM triggers "
+        "WHERE profile = ? AND date = ? AND is_control_group = 0 AND rank <= ?",
+        (PROFILE, prior[0], top_n),
+    ).fetchall()
+    prev_ranks = {r[0]: r[1] for r in prev_rows}
+    prev_names = dict(conn.execute("SELECT stock_id, name FROM stock_meta"))
+
+    today_top = [s for s in result.scores if not s.is_control_group and s.rank <= top_n]
+    today_ids = {s.stock_id for s in today_top}
+
+    new_entrants = [s for s in today_top if s.stock_id not in prev_ranks]
+    dropped = [
+        {"stock_id": sid, "name": prev_names.get(sid), "prev_rank": rk}
+        for sid, rk in sorted(prev_ranks.items(), key=lambda kv: kv[1])
+        if sid not in today_ids
+    ]
+    return new_entrants, dropped
+
 
 def record_config_version(conn: sqlite3.Connection, mcfg: MomentumConfig,
                           date: str, note: str = "") -> None:

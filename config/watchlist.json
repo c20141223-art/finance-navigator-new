@@ -1,0 +1,11 @@
+{
+  "_about": "觀察池（規格書 6.4）。工具只呈現這些個股的『客觀順勢分數』與『排名變化』，不加分、不進選股母體、不構成任何買賣建議。JSON 不支援註解，故以底線開頭的鍵為說明，程式會忽略。",
+  "_schema": {
+    "stocks": "陣列。每筆 { \"stock_id\": \"2330\", \"note\": \"自己備忘（選填）\" }。stock_id 為四碼普通股代號。",
+    "consecutive_bottom_alert_days": "整數。連續 N 個『有更新的交易日』在觀察池內排名墊底（最後一名）即於信中警示。",
+    "score_profile": "字串。用哪一套評分計算客觀分數，目前僅 'momentum'（沿用 config/momentum.yaml 的因子與權重）。"
+  },
+  "consecutive_bottom_alert_days": 3,
+  "score_profile": "momentum",
+  "stocks": []
+}
