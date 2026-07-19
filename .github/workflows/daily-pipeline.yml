@@ -22,8 +22,13 @@ on:
 env:
   TARGET_BRANCH: claude/taiwan-stock-screening-phase1-3eng2j
 
+# contents: write is needed by the "Publish dashboard" step, which commits the
+# daily dashboard JSON to main under /screener/ (GitHub Pages serves main root;
+# the finance-navigator index.html at main root is never touched). If main has
+# branch protection, allow github-actions[bot] to push, or the publish step
+# fails (loudly) while the email still goes out.
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: daily-pipeline
@@ -38,6 +43,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ env.TARGET_BRANCH }}
+
+      - name: Checkout main into pages-main/ (GitHub Pages source)
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          path: pages-main
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -86,6 +98,45 @@ jobs:
           name: email-preview
           path: email_preview.html
           if-no-files-found: ignore
+
+      # Publish the static dashboard to GitHub Pages. Copies the dashboard page
+      # and the run's JSON into main:/screener/, rebuilds the date index from
+      # whatever dated files already exist on main (so history accumulates and
+      # is never wiped by a fresh run), and pushes ONLY /screener/. The email
+      # is already sent by this point, so a publish hiccup can't block it.
+      - name: Publish dashboard to GitHub Pages (main /screener)
+        if: always()
+        run: |
+          set -e
+          if [ ! -f web/data/latest.json ]; then
+            echo "No web/data/latest.json produced — skipping publish."
+            exit 0
+          fi
+          DATE=$(python -c "import json;print(json.load(open('web/data/latest.json'))['date'])")
+          DEST=pages-main/screener
+          mkdir -p "$DEST/data"
+          cp web/index.html "$DEST/index.html"
+          cp web/data/latest.json "$DEST/data/latest.json"
+          cp "web/data/${DATE}.json" "$DEST/data/${DATE}.json"
+          python - <<'PY'
+          import json, glob, os, re
+          d = "pages-main/screener/data"
+          dates = sorted({os.path.basename(f)[:-5] for f in glob.glob(f"{d}/*.json")
+                          if re.fullmatch(r"\d{4}-\d{2}-\d{2}", os.path.basename(f)[:-5])},
+                         reverse=True)
+          json.dump({"latest": dates[0] if dates else None, "dates": dates},
+                    open(f"{d}/index.json", "w"), ensure_ascii=False, indent=2)
+          PY
+          cd pages-main
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add screener
+          if git diff --cached --quiet; then
+            echo "No dashboard changes to publish."
+          else
+            git commit -m "Update dashboard data for ${DATE}"
+            git push origin main
+          fi
 
       - name: Save market DB cache
         if: always()
