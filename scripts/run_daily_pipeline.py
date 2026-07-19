@@ -28,7 +28,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from stock_screener import (
     db, emailer, loaders, market_status, momentum, pipeline, report_email,
-    returns, reversal, watchlist,
+    returns, reversal, watchlist, web_export,
 )
 from stock_screener.config import load_config
 from stock_screener.http_client import RateLimitedClient
@@ -82,6 +82,8 @@ def main() -> None:
     parser.add_argument("--db-path", type=str, default=str(db.DEFAULT_DB_PATH))
     parser.add_argument("--no-email", action="store_true", help="run everything but skip sending")
     parser.add_argument("--save-html", type=str, default=None, help="also write the HTML to this path")
+    parser.add_argument("--web-dir", type=str, default="web",
+                        help="write the dashboard JSON under <web-dir>/data/ (Pages output)")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
@@ -163,6 +165,12 @@ def main() -> None:
             top_n=mcfg.top_n,
         )
         subject, html_doc, text = report_email.build_report(ctx)
+
+        # static dashboard JSON (GitHub Pages) — additive, never blocks email
+        steps.run("web_export", lambda: web_export.write_web_output(
+            args.web_dir, web_export.build_dashboard_data(ctx)))
+        # web_export failures joined the banner too late for this run's email,
+        # but are recorded in fetch_log and will show next run.
 
     if args.save_html:
         Path(args.save_html).write_text(html_doc, encoding="utf-8")

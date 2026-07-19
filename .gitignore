@@ -9,5 +9,9 @@ data/market.db
 data/market.db-wal
 data/market.db-shm
 
+# 儀表板每日輸出（generated per-run）；已發布副本在 main:/screener/data/。
+# web/index.html（儀表板本體）為原始碼、需版本控管，不列入。
+web/data/
+
 .venv/
 venv/
