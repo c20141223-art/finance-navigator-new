@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>台股選股工具 · 每日儀表板</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --ink:#1a1a2e; --muted:#6b7280; --line:#e5e7eb;
+    --head:#111827; --good:#0f7b3f; --goodbg:#e6f4ea; --warn:#b42318; --warnbg:#fdecea;
+    --neutral:#1d4ed8; --neutralbg:#e8efff; --chip:#eef1f5;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{ --bg:#0d1117; --card:#161b22; --ink:#e6edf3; --muted:#8b949e; --line:#30363d;
+      --head:#f0f6fc; --good:#3fb950; --goodbg:#12261a; --warn:#ff7b72; --warnbg:#2d1513;
+      --neutral:#6ea8ff; --neutralbg:#152238; --chip:#21262d; }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font-family:-apple-system,'Segoe UI','Noto Sans TC',Roboto,Helvetica,Arial,sans-serif;
+    -webkit-text-size-adjust:100%;}
+  .wrap{max-width:760px;margin:0 auto;padding:14px 12px 40px;}
+  header{background:var(--head);border-radius:14px;padding:18px 16px;color:#fff;
+    margin-bottom:14px;}
+  header .t{font-size:20px;font-weight:800}
+  header .d{font-size:14px;color:#c7cbd1;margin-top:4px}
+  header .m{font-size:12px;color:#aab1bb;margin-top:8px;line-height:1.6}
+  select{font-size:14px;padding:5px 8px;border-radius:8px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);margin-top:8px;max-width:100%}
+  .card{background:var(--card);border-radius:14px;padding:16px;margin-bottom:14px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  h2{font-size:17px;font-weight:700;margin:0 0 2px;color:var(--head)}
+  .sub{font-size:12px;color:var(--muted);margin:0 0 12px}
+  .banner{border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:13px}
+  .banner.warn{background:var(--warnbg);border-left:4px solid var(--warn)}
+  .banner.good{background:var(--goodbg);border-left:4px solid var(--good)}
+  .banner b.w{color:var(--warn)} .banner b.g{color:var(--good)}
+  .banner ul{margin:6px 0 0;padding-left:18px}
+  .stat{display:flex;justify-content:space-between;align-items:flex-start;
+    padding:9px 0;border-bottom:1px solid var(--line);font-size:14px;gap:10px}
+  .stat:last-child{border-bottom:0}
+  .stat .lbl{color:var(--ink)}
+  .stat .val{text-align:right;font-weight:600}
+  .stat .ex{font-size:12px;color:var(--muted);font-weight:400;margin-top:2px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:10px;font-size:12px;font-weight:600}
+  .up{color:var(--good)} .down{color:var(--warn)} .flat{color:var(--muted)}
+  .tblwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:8px 6px;border-bottom:1px solid var(--line);text-align:center;white-space:nowrap}
+  th{color:var(--muted);font-weight:600;font-size:12px;position:sticky;top:0;background:var(--card);
+    cursor:pointer;user-select:none}
+  th.name,td.name{text-align:left}
+  th .ar{opacity:.4;font-size:10px}
+  th.act .ar{opacity:1;color:var(--neutral)}
+  td.name .sid{font-weight:600} td.name .nm{color:var(--muted);margin-left:4px}
+  td.note{font-size:11px;color:var(--muted)}
+  tr.new td{background:var(--goodbg)}
+  .badge{display:inline-block;padding:0 6px;border-radius:8px;font-size:11px;font-weight:700;margin-left:4px}
+  .badge.new{color:var(--good);background:var(--goodbg)}
+  .tot{font-weight:800;color:var(--head)}
+  .foot{font-size:12px;color:var(--muted);margin-top:8px;line-height:1.6}
+  .disc{font-size:12px;color:var(--muted);line-height:1.7;border-top:1px solid var(--line);
+    padding-top:12px;margin-top:6px}
+  .loading{text-align:center;color:var(--muted);padding:40px 0}
+  .empty{color:var(--muted);font-size:13px}
+  code{background:var(--chip);padding:1px 5px;border-radius:5px;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="t">台股選股工具 · 每日儀表板</div>
+    <div class="d" id="hdate">載入中…</div>
+    <div><select id="datesel" style="display:none" aria-label="選擇日期"></select></div>
+    <div class="m" id="hmeta"></div>
+  </header>
+  <div id="app"><div class="loading">載入資料中…</div></div>
+  <div class="card">
+    <div class="disc">
+      本儀表板為個人量化研究工具的自動輸出，僅呈現客觀數據與規則觸發狀態，
+      <b>不構成任何投資建議或買賣邀約</b>；反轉與觀察池為高風險資訊，請自行判斷並自負風險。
+      成交量採官方日成交口徑，技術指標以還原股價計算。
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+const $ = (s,el=document)=>el.querySelector(s);
+const el = (tag,cls,html)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e;};
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const numsafe = v => (v==null||isNaN(v))?"—":(+v);
+const fx = (v,d=2)=> v==null?"—":(+v).toFixed(d);
+const pct = (v,d=1)=> v==null?"—":((+v).toFixed(d)+"%");
+
+let STATE = {data:null, momSort:{key:"rank",dir:1}, wlSort:{key:"rank",dir:1}};
+
+async function boot(){
+  // optional date index for the picker
+  try{
+    const idx = await fetch("data/index.json",{cache:"no-store"}).then(r=>r.ok?r.json():null);
+    if(idx && idx.dates && idx.dates.length>1){
+      const sel = $("#datesel"); sel.style.display="inline-block";
+      idx.dates.forEach(d=>{const o=el("option");o.value=d;o.textContent=d;sel.appendChild(o);});
+      sel.onchange = ()=>load(sel.value==idx.latest?"data/latest.json":`data/${sel.value}.json`);
+    }
+  }catch(e){/* index optional */}
+  load("data/latest.json");
+}
+
+async function load(url){
+  try{
+    const data = await fetch(url,{cache:"no-store"}).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();});
+    STATE.data = data; render();
+  }catch(e){
+    $("#app").innerHTML = `<div class="card"><div class="empty">尚無資料可顯示（${esc(e.message)}）。首次排程執行後即會出現。</div></div>`;
+    $("#hdate").textContent = "尚無資料";
+  }
+}
+
+function render(){
+  const d = STATE.data;
+  $("#hdate").textContent = "交易日 "+esc(d.date);
+  const gen = d.generated_at? new Date(d.generated_at).toLocaleString() : "";
+  $("#hmeta").innerHTML = `產生 ${esc(gen)}　·　momentum <code>${esc(d.versions?.momentum||"")}</code> · reversal <code>${esc(d.versions?.reversal||"")}</code>`;
+  const app = $("#app"); app.innerHTML="";
+  if(d.fetch_failures && d.fetch_failures.length) app.appendChild(failureBanner(d.fetch_failures));
+  app.appendChild(marketBlock(d.market_status||{}));
+  app.appendChild(momentumBlock(d.momentum||{}));
+  app.appendChild(reversalBlock(d.reversal));
+  app.appendChild(watchlistBlock(d.watchlist));
+}
+
+function failureBanner(fs){
+  const c = el("div","card");
+  c.appendChild(el("div","banner warn",
+    `<b class="w">⚠ 本日缺料 / 環節失敗（${fs.length}）</b>
+     <ul>${fs.map(f=>`<li>${esc(f.source)}：${esc(f.error)}</li>`).join("")}</ul>
+     <div class="foot">流程未中斷；受影響區塊的數字可能不完整。</div>`));
+  return c;
+}
+
+// ── ① 大盤狀態 ──
+function marketBlock(ms){
+  const c = el("div","card");
+  c.appendChild(el("h2",null,"① 大盤狀態"));
+  c.appendChild(el("div","sub","僅標注方向，不作為進出訊號、不計分"));
+  const rows = [];
+  if(ms.index_available){
+    const vs = ms.index_vs_60ma_pct;
+    const vcls = vs>0?"up":vs<0?"down":"flat";
+    const arrow = vs>0?"▲":vs<0?"▼":"＝";
+    rows.push(stat("加權指數", fx(ms.index_close,2),
+      `<span class="pill" style="background:var(--chip)">${vs>0?"站上":vs<0?"跌破":"貼近"} 60MA</span>`));
+    rows.push(stat("指數 vs 60MA", `<span class="${vcls}">${arrow}${pct(Math.abs(vs))}</span>`, "60MA "+fx(ms.index_60ma,2)));
+    const dmap={up:['↑ 走揚','up'],down:['↓ 走弱','down'],flat:['→ 走平','flat']};
+    const dd = dmap[ms.ma60_direction]||['資料不足','flat'];
+    rows.push(stat("60MA 方向", `<span class="${dd[1]}">${dd[0]}</span>`, ""));
+  }else{
+    rows.push(stat("加權指數 vs 60MA", `<span class="flat">尚無足夠指數資料</span>`,
+      `已抓 ${ms.history_len||0} 日，需 60 日`));
+  }
+  const bull = ms.bullish_alignment_pct;
+  rows.push(stat("全市場多頭排列佔比",
+    `<span style="color:${bull>=50?'var(--good)':'var(--muted)'};font-weight:700">${bull==null?"—":pct(bull,2)}</span>`,
+    `母體 ${ms.breadth_universe??"—"} 檔（收盤 &gt; 20MA &gt; 60MA，還原價）`));
+  const box = el("div"); rows.forEach(r=>box.appendChild(r)); c.appendChild(box);
+  return c;
+}
+function stat(lbl,val,ex){
+  return el("div","stat",`<div class="lbl">${lbl}</div><div class="val">${val}${ex?`<div class="ex">${ex}</div>`:""}</div>`);
+}
+
+// ── ② 順勢 Top N ──
+function momentumBlock(m){
+  const c = el("div","card");
+  c.appendChild(el("h2",null,`② 順勢 Top ${m.top_n||30}`));
+  c.appendChild(el("div","sub","分項得分與進出榜變動 · 點欄位標題可排序"));
+  if(m.new_entrants && m.new_entrants.length)
+    c.appendChild(el("div","banner good",
+      `<b class="g">✦ 新進榜（${m.new_entrants.length}）</b><div class="foot" style="color:var(--ink)">${m.new_entrants.map(s=>esc(s.stock_id)+" "+esc(s.name)).join("、")}</div>`));
+  if(m.dropped && m.dropped.length)
+    c.appendChild(el("div","banner warn",
+      `<b class="w">⚠ 跌出榜（${m.dropped.length}）</b><div class="foot" style="color:var(--ink)">${m.dropped.map(x=>esc(x.stock_id)+" "+esc(x.name||"")+`（前 #${x.prev_rank}）`).join("、")}</div>`));
+
+  const cols = [["rank","#"],["name","代號 / 名稱"],["total","總分"],
+    ["fundamental","基"],["chips","籌"],["technical","技"]];
+  const rows = (m.rows||[]).slice();
+  const s = STATE.momSort;
+  rows.sort((a,b)=>cmp(a,b,s.key)*s.dir);
+  const wrap = el("div","tblwrap");
+  const tbl = el("table");
+  tbl.appendChild(headRow(cols,s,(k)=>{setSort(STATE.momSort,k);render();}));
+  const tb = el("tbody");
+  rows.forEach(r=>{
+    const tr = el("tr", r.is_new?"new":"");
+    tr.innerHTML = `<td>${r.rank}</td>
+      <td class="name"><span class="sid">${esc(r.stock_id)}</span><span class="nm">${esc(r.name)}</span>${r.is_new?'<span class="badge new">新</span>':""}</td>
+      <td class="tot">${fx(r.total,1)}</td>
+      <td>${fx(r.fundamental,0)}</td><td>${fx(r.chips,0)}</td><td>${fx(r.technical,0)}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb); wrap.appendChild(tbl); c.appendChild(wrap);
+  c.appendChild(el("div","foot",
+    `基=基本面 籌=籌碼 技=技術（各滿分 100，總分 0.30/0.35/0.35 加權）。母體 ${m.universe_size??"—"} → 通過排雷 ${m.passed_filters??"—"} → 評分 ${m.all_scored??"—"}。同分以代號升冪排序、不含鑑別意義。`));
+  return c;
+}
+
+// ── ③ 反轉雷達 ──
+const STATE_STYLE = {confirmed:['已確認','good'],confirming:['確認中','neutral'],
+  triggered:['初次觸發','neutral'],watch:['觀察','flat'],failed:['訊號失敗','warn']};
+function reversalBlock(r){
+  const c = el("div","card");
+  c.appendChild(el("h2",null,"③ 反轉雷達"));
+  c.appendChild(el("div","sub","止跌打底後的轉強觸發"));
+  c.appendChild(el("div","banner warn",
+    `<b class="w">⚠ 高風險清單</b>　反轉為跌深後的搏底訊號，僅呈現客觀狀態與失效判定價，不構成任何買賣建議。`));
+  if(!r){ c.appendChild(el("div","empty","本日未執行反轉偵測。")); return c; }
+  c.appendChild(el("div","foot",
+    `本日觸發 <b style="color:var(--head);font-size:15px">${r.trigger_count}</b> 檔（資格母體 ${r.qualified} 檔，對照組 ${r.control_count} 檔）。單日個位數至十餘檔屬合理，動輒數十檔代表條件過鬆。`));
+  if(!r.triggers || !r.triggers.length){ c.appendChild(el("div","empty","本日無反轉觸發。")); return c; }
+  const wrap = el("div","tblwrap"); const tbl = el("table");
+  tbl.innerHTML = `<thead><tr><th class="name">代號 / 名稱</th><th>狀態</th><th>失效判定價</th><th>觸發訊號</th><th>回檔</th></tr></thead>`;
+  const tb = el("tbody");
+  r.triggers.forEach(t=>{
+    const st = STATE_STYLE[t.state]||[t.state||"—","flat"];
+    const tr = el("tr");
+    tr.innerHTML = `<td class="name"><span class="sid">${esc(t.stock_id)}</span><span class="nm">${esc(t.name)}</span></td>
+      <td><span class="pill ${st[1]==='neutral'?'':st[1]}" style="background:var(--${st[1]==='neutral'?'neutralbg':st[1]+'bg'});color:var(--${st[1]==='neutral'?'neutral':st[1]})">${esc(st[0])}</span></td>
+      <td style="font-weight:600">${fx(t.invalidation_price,2)}</td>
+      <td style="font-size:12px">${esc(t.signal_summary)}</td>
+      <td>${pct(t.drawdown_pct)}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb); wrap.appendChild(tbl); c.appendChild(wrap);
+  c.appendChild(el("div","foot","失效判定價 = 觸發日 K 棒最低點（還原價），收盤跌破即訊號失敗。"));
+  return c;
+}
+
+// ── ④ 觀察池雷達 ──
+function watchlistBlock(w){
+  const c = el("div","card");
+  c.appendChild(el("h2",null,"④ 觀察池雷達"));
+  c.appendChild(el("div","sub","客觀分數與排名變化 · 不加分、不影響選股 · 點欄位標題可排序"));
+  if(!w || !w.entries || !w.entries.length){
+    c.appendChild(el("div","empty","尚未設定觀察池，於 config/watchlist.json 的 stocks 填入代號即可。"));
+    return c;
+  }
+  const cols = [["rank","名次"],["name","代號 / 名稱"],["total","分數"],
+    ["rank_change","排名變化"],["status","狀態"]];
+  const rows = w.entries.slice();
+  const s = STATE.wlSort;
+  rows.sort((a,b)=>cmp(a,b,s.key)*s.dir);
+  const wrap = el("div","tblwrap"); const tbl = el("table");
+  tbl.appendChild(headRow(cols,s,(k)=>{setSort(STATE.wlSort,k);render();}));
+  const tb = el("tbody");
+  rows.forEach(e=>{
+    let chg="—";
+    if(e.insufficient||e.total==null){}
+    else if(e.rank_change==null) chg=`<span class="pill" style="background:var(--neutralbg);color:var(--neutral)">新追蹤</span>`;
+    else if(e.rank_change>0) chg=`<span class="up">▲${e.rank_change}</span>`;
+    else if(e.rank_change<0) chg=`<span class="down">▼${Math.abs(e.rank_change)}</span>`;
+    else chg=`<span class="flat">＝</span>`;
+    let status;
+    if(e.insufficient||e.total==null) status=`<span class="pill" style="background:var(--chip)">資料不足</span>`;
+    else if(e.bottom_alert) status=`<span class="pill" style="background:var(--warnbg);color:var(--warn)">連續墊底</span>`;
+    else if(e.filter_ok) status=`<span class="pill" style="background:var(--goodbg);color:var(--good)">已過排雷</span>`;
+    else status=`<span class="pill" style="background:var(--chip)">未過排雷</span>`;
+    const tr = el("tr");
+    tr.innerHTML = `<td>${e.rank??"—"}</td>
+      <td class="name"><span class="sid">${esc(e.stock_id)}</span><span class="nm">${esc(e.name)}</span>${e.note?`<div class="note">${esc(e.note)}</div>`:""}</td>
+      <td class="tot">${e.total==null?"—":fx(e.total,1)}</td>
+      <td>${chg}</td><td>${status}</td>`;
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb); wrap.appendChild(tbl); c.appendChild(wrap);
+  return c;
+}
+
+// ── sorting helpers ──
+function headRow(cols,sortState,onclick){
+  const thead = el("thead"); const tr = el("tr");
+  cols.forEach(([k,label])=>{
+    const active = sortState.key===k;
+    const th = el("th", (k==="name"?"name ":"")+(active?"act":""),
+      `${label} <span class="ar">${active?(sortState.dir>0?"▲":"▼"):"↕"}</span>`);
+    if(k!=="status") th.onclick=()=>onclick(k); else th.style.cursor="default";
+    tr.appendChild(th);
+  });
+  thead.appendChild(tr); return thead;
+}
+function setSort(s,key){ if(key==="status")return; if(s.key===key) s.dir*=-1; else {s.key=key; s.dir=(key==="rank")?1:-1;} }
+function cmp(a,b,key){
+  let x=a[key], y=b[key];
+  if(key==="name"){ x=a.stock_id; y=b.stock_id; }
+  const xn=(x==null), yn=(y==null);
+  if(xn&&yn)return 0; if(xn)return 1; if(yn)return -1;   // nulls last
+  if(typeof x==="number"&&typeof y==="number") return x-y;
+  return String(x)<String(y)?-1:String(x)>String(y)?1:0;
+}
+
+boot();
+</script>
+</body>
+</html>

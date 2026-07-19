@@ -1,0 +1,1121 @@
+{
+  "schema_version": 1,
+  "date": "2026-07-17",
+  "generated_at": "2026-07-19T14:33:44.906710+00:00",
+  "versions": {
+    "momentum": "ea7537f7c196",
+    "reversal": "d90cfcf5ce4b"
+  },
+  "fetch_failures": [],
+  "market_status": {
+    "index_available": true,
+    "index_id": "TAIEX",
+    "index_close": 42671.27,
+    "index_60ma": 43525.13,
+    "index_vs_60ma_pct": -1.96,
+    "ma60_direction": "up",
+    "history_len": 65,
+    "bullish_alignment_pct": 15.35,
+    "breadth_universe": 860
+  },
+  "momentum": {
+    "top_n": 30,
+    "universe_size": 6376,
+    "passed_filters": 860,
+    "all_scored": 860,
+    "new_entrants": [],
+    "dropped": [],
+    "rows": [
+      {
+        "rank": 1,
+        "stock_id": "1303",
+        "name": "南亞",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 31.7861,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 20.0,
+            "score": 100.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": -0.2383,
+            "score": 0.0
+          },
+          "bias_60ma": {
+            "raw": 62.0433,
+            "score": 0.0
+          },
+          "volume_expansion": {
+            "raw": 1.5383,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 2,
+        "stock_id": "1723",
+        "name": "中碳",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 32.1158,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2252,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 6.3142,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.7123,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 3,
+        "stock_id": "1808",
+        "name": "潤隆",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 162537.2747,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.3924,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 7.036,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.1067,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 4,
+        "stock_id": "2027",
+        "name": "大成鋼",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 43.7329,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 1.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1969,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 0.1273,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.1263,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 5,
+        "stock_id": "2101",
+        "name": "南港",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 328.2546,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1525,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 4.3852,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.1269,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 6,
+        "stock_id": "2348",
+        "name": "海悅",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 247.6639,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1644,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 7.7174,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.101,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 7,
+        "stock_id": "2442",
+        "name": "新美齊",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 220.0929,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2138,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 0.635,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.9034,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 8,
+        "stock_id": "2488",
+        "name": "漢平",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 36.2151,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.3341,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": -6.5029,
+            "score": 0.0
+          },
+          "volume_expansion": {
+            "raw": 1.6833,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 9,
+        "stock_id": "2493",
+        "name": "揚博",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 32.0576,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 2.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2744,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 9.7941,
+            "score": 60.0
+          },
+          "volume_expansion": {
+            "raw": 1.3646,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 10,
+        "stock_id": "2527",
+        "name": "宏璟",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 365.123,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 1.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2067,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 28.4579,
+            "score": 0.0
+          },
+          "volume_expansion": {
+            "raw": 1.9271,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 11,
+        "stock_id": "2537",
+        "name": "聯上發",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 57.6798,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2201,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 4.0018,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.6416,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 12,
+        "stock_id": "2539",
+        "name": "櫻花建",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 79.5531,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2857,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 4.5975,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.3389,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 13,
+        "stock_id": "2637",
+        "name": "慧洋-KY",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 57.9191,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 7.0,
+            "score": 70.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1137,
+            "score": 60.0
+          },
+          "bias_60ma": {
+            "raw": 4.5081,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.0199,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 14,
+        "stock_id": "2646",
+        "name": "星宇航空",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 40.8071,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.3024,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 2.3866,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.809,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 15,
+        "stock_id": "2905",
+        "name": "三商",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 479.1567,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1942,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 6.4177,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.2311,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 16,
+        "stock_id": "3090",
+        "name": "日電貿",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 32.3749,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2277,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": -9.1772,
+            "score": 0.0
+          },
+          "volume_expansion": {
+            "raw": 1.6495,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 17,
+        "stock_id": "5388",
+        "name": "中磊",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 70.8268,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1975,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 0.3897,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.3632,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 18,
+        "stock_id": "5434",
+        "name": "崇越",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 32.8575,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 15.0,
+            "score": 100.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": -0.0338,
+            "score": 0.0
+          },
+          "bias_60ma": {
+            "raw": 20.4092,
+            "score": 30.0
+          },
+          "volume_expansion": {
+            "raw": 1.3686,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 19,
+        "stock_id": "5534",
+        "name": "長虹",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 124.2066,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.4208,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 3.8031,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.7561,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 20,
+        "stock_id": "6141",
+        "name": "柏承",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 34.7029,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2036,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 13.6131,
+            "score": 60.0
+          },
+          "volume_expansion": {
+            "raw": 1.764,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 21,
+        "stock_id": "6177",
+        "name": "達麗",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 1322.1625,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.3482,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 4.2905,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.8873,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 22,
+        "stock_id": "6277",
+        "name": "宏正",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 35.1173,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 1.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1799,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 10.3193,
+            "score": 60.0
+          },
+          "volume_expansion": {
+            "raw": 2.8155,
+            "score": 50.0
+          }
+        }
+      },
+      {
+        "rank": 23,
+        "stock_id": "6491",
+        "name": "晶碩",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 33.9394,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.1927,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 5.2576,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.6612,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 24,
+        "stock_id": "6949",
+        "name": "沛爾生醫-創",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 50.2294,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2128,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 31.5509,
+            "score": 0.0
+          },
+          "volume_expansion": {
+            "raw": 1.615,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 25,
+        "stock_id": "9940",
+        "name": "信義",
+        "total": 100.0,
+        "fundamental": 100.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 41.4171,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2788,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 2.9988,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.1448,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 26,
+        "stock_id": "3167",
+        "name": "大量",
+        "total": 89.5,
+        "fundamental": 100.0,
+        "chips": 70.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 139.6644,
+            "score": 100.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 6.0,
+            "score": 70.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": -0.0366,
+            "score": 0.0
+          },
+          "bias_60ma": {
+            "raw": -4.7974,
+            "score": 0.0
+          },
+          "volume_expansion": {
+            "raw": 1.8109,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 27,
+        "stock_id": "1402",
+        "name": "遠東新",
+        "total": 88.0,
+        "fundamental": 60.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 12.0624,
+            "score": 60.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.281,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 2.3399,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.2709,
+            "score": 100.0
+          }
+        }
+      },
+      {
+        "rank": 28,
+        "stock_id": "2105",
+        "name": "正新",
+        "total": 88.0,
+        "fundamental": 60.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 15.0053,
+            "score": 60.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.485,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 4.6865,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.9532,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 29,
+        "stock_id": "2106",
+        "name": "建大",
+        "total": 88.0,
+        "fundamental": 60.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 11.5982,
+            "score": 60.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2423,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 4.0429,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 1.0949,
+            "score": 0.0
+          }
+        }
+      },
+      {
+        "rank": 30,
+        "stock_id": "2258",
+        "name": "鴻華先進-創",
+        "total": 88.0,
+        "fundamental": 60.0,
+        "chips": 100.0,
+        "technical": 100.0,
+        "is_new": false,
+        "factors": {
+          "revenue_yoy": {
+            "raw": 22.6734,
+            "score": 60.0
+          },
+          "revenue_trend_3m": {
+            "raw": false,
+            "score": 0.0
+          },
+          "trust_buy_streak": {
+            "raw": 0.0,
+            "score": 0.0
+          },
+          "foreign_net_ratio_5d": {
+            "raw": 0.2125,
+            "score": 100.0
+          },
+          "bias_60ma": {
+            "raw": 5.0565,
+            "score": 100.0
+          },
+          "volume_expansion": {
+            "raw": 0.9576,
+            "score": 0.0
+          }
+        }
+      }
+    ]
+  },
+  "reversal": {
+    "qualified": 868,
+    "trigger_count": 0,
+    "control_count": 0,
+    "triggers": []
+  },
+  "watchlist": {
+    "n_stocks": 0,
+    "entries": []
+  }
+}
