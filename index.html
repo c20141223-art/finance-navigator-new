@@ -961,6 +961,10 @@ body {
 <!-- ── PAGE 2: 支出 ── -->
 <div class="page" id="page-2">
 
+  <button class="add-item-btn" style="margin-bottom:10px" onclick="copyPrevExpenses()">
+    <span style="font-size:16px">📋</span> 複製上月支出到本月
+  </button>
+
   <!-- Fixed -->
   <div class="card">
     <div class="sec-header">
@@ -1272,6 +1276,65 @@ function resetStateToDefault() {
   selectedMode = 'balanced';
 }
 
+// 往前找最近一個有存檔的月份（最多回溯 24 個月）
+function findPrevMonthWithData(month) {
+  let [y, m] = month.split('-').map(Number);
+  for(let i = 0; i < 24; i++) {
+    m--; if(m <= 0) { m = 12; y--; }
+    const k = `${y}-${String(m).padStart(2,'0')}`;
+    if(monthHasData(k)) return k;
+  }
+  return null;
+}
+
+// 從來源月份複製收入、支出、貸款、儲蓄配置等（金額沿用，之後再微調即可）
+function copyFromMonth(srcMonth, keys) {
+  try {
+    const saved = JSON.parse(localStorage.getItem(KEY_PREFIX + srcMonth));
+    if(!saved) return false;
+    (keys || ['income','fixed','variable','loans','savingGoals','savingsAlloc']).forEach(k => {
+      if(saved[k] !== undefined) state[k] = JSON.parse(JSON.stringify(saved[k]));
+    });
+    if(!keys) {
+      if(saved.saveTarget !== undefined) state.saveTarget = saved.saveTarget;
+      if(saved.selectedMode) selectedMode = saved.selectedMode;
+    }
+    return true;
+  } catch(e) { console.warn('複製上月失敗', e); return false; }
+}
+
+function rerenderAll() {
+  renderModeGrid();
+  renderIncome();
+  renderExpenses();
+  renderLoans();
+  renderSavingsAlloc();
+  renderSavingGoals();
+  recalc();
+}
+
+function flashBadge(text, color) {
+  const badge = document.getElementById('save-badge');
+  if(!badge) return;
+  badge.textContent = text;
+  badge.style.color = color;
+  badge.style.opacity = '1';
+  clearTimeout(saveBadgeTimer);
+  saveBadgeTimer = setTimeout(()=>{ badge.style.opacity='0'; badge.style.color='var(--green)'; badge.textContent='✓ 已存檔'; }, 3000);
+}
+
+// 手動：把上月的固定＋變動支出複製到本月（覆蓋）
+function copyPrevExpenses() {
+  const month = activeMonth || getCurrentMonth();
+  const src = findPrevMonthWithData(month);
+  if(!src) { alert('找不到之前月份的資料可以複製'); return; }
+  if(!confirm(`要用 ${src} 的固定支出與變動支出，覆蓋 ${month} 目前的支出嗎？`)) return;
+  copyFromMonth(src, ['fixed','variable']);
+  rerenderAll();
+  saveState();
+  flashBadge(`📋 已複製 ${src} 支出`, 'var(--teal)');
+}
+
 let saveBadgeTimer;
 function showSaveBadge() {
   let badge = document.getElementById('save-badge');
@@ -1331,29 +1394,23 @@ function onMonthChange() {
   activeMonth = newMonth;
   const restored = loadState(newMonth);
 
-  // ④ 目標月份沒有貸款資料時，沿用上月貸款（貸款為長期負債，不需每月重新填寫）
+  // ④ 新月份沒有資料時，自動複製最近一個有資料的前期月份
+  let copiedFrom = null;
+  if(!restored) {
+    const src = findPrevMonthWithData(newMonth);
+    if(src && copyFromMonth(src)) copiedFrom = src;
+  }
+  // 仍沒有貸款資料時，沿用切換前的貸款（貸款為長期負債）
   if(state.loans.length === 0 && prevLoans.length > 0) {
     state.loans = prevLoans;
   }
 
-  // 重新渲染
-  renderModeGrid();
-  renderIncome();
-  renderExpenses();
-  renderLoans();
-  renderSavingsAlloc();
-  renderSavingGoals();
-  recalc();
+  rerenderAll();
+  if(copiedFrom) saveState();
 
-  // 通知
-  const badge = document.getElementById('save-badge');
-  if(badge) {
-    badge.textContent = restored ? `✓ 已載入 ${newMonth}` : `✦ ${newMonth} 全新月份`;
-    badge.style.color  = restored ? 'var(--green)' : 'var(--teal)';
-    badge.style.opacity = '1';
-    clearTimeout(saveBadgeTimer);
-    saveBadgeTimer = setTimeout(()=>{ badge.style.opacity='0'; badge.style.color='var(--green)'; }, 2500);
-  }
+  if(restored)        flashBadge(`✓ 已載入 ${newMonth}`, 'var(--green)');
+  else if(copiedFrom) flashBadge(`📋 已從 ${copiedFrom} 複製`, 'var(--teal)');
+  else                flashBadge(`✦ ${newMonth} 全新月份`, 'var(--teal)');
 
   // 重建選單更新「●」標記，並保持選中
   buildMonthSelector(newMonth);
@@ -2521,20 +2578,17 @@ function init() {
   document.getElementById('month-sel').value = activeMonth;
 
   const restored = loadState(activeMonth);
-  renderModeGrid();
-  renderIncome();
-  renderExpenses();
-  renderLoans();
-  renderSavingsAlloc();
-  renderSavingGoals();
-  recalc();
-
-  const badge = document.getElementById('save-badge');
-  if(badge && restored) {
-    badge.textContent = `✓ 已載入 ${activeMonth}`;
-    badge.style.opacity = '1';
-    setTimeout(()=>{ badge.textContent='✓ 已存檔'; badge.style.opacity='0'; }, 2500);
+  // 新的一個月第一次打開：自動複製上個月的資料
+  let copiedFrom = null;
+  if(!restored) {
+    const src = findPrevMonthWithData(activeMonth);
+    if(src && copyFromMonth(src)) copiedFrom = src;
   }
+  rerenderAll();
+  if(copiedFrom) { saveState(); buildMonthSelector(activeMonth); }
+
+  if(restored)        flashBadge(`✓ 已載入 ${activeMonth}`, 'var(--green)');
+  else if(copiedFrom) flashBadge(`📋 已從 ${copiedFrom} 複製`, 'var(--teal)');
 }
 
 init();
